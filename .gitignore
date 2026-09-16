@@ -1,0 +1,33 @@
+# Ignore environment secrets and local config
+.env
+.env.local
+
+# Composer vendor can be regenerated
+/vendor/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+
+# Backup SQL dumps
+/backups/*.sql
+/backups/*.zip
+/kape_agosto.sql
+
+# Reports generated
+/public/reports/*
+/reports/*
+
+# Uploaded avatars or user files
+/public/uploads/users/*
+# Local mail/reset logs (safe to ignore)
+/public/reset_links.log
+/public/smtp_debug.log
+
+# Node/other dependency caches
+node_modules/
+
+# PHPStorm / VSCode settings
+.idea/
+.vscode/
