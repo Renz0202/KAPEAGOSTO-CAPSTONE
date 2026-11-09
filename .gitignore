@@ -16,6 +16,7 @@ Thumbs.db
 /backups/*.sql
 /backups/*.zip
 /kape_agosto.sql
+/127_0_0_1*.sql
 
 # Reports generated
 /public/reports/*

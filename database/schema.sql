@@ -1,6 +1,6 @@
--- Kape Agosto schema-only export.
--- Contains table definitions and constraints; no database records or credentials.
-CREATE DATABASE IF NOT EXISTS `kape_agosto`;
+-- Kape Agosto schema-only export from the supplied database update.
+-- Contains table definitions, constraints, and triggers; excludes all records and credentials.
+CREATE DATABASE IF NOT EXISTS `kape_agosto` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `kape_agosto`;
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -54,6 +54,11 @@ CREATE TABLE `daily_sales_reports` (
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE `document_sequences` (
+  `sequence_key` varchar(50) NOT NULL,
+  `last_number` bigint(20) UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE `forecast_snapshots` (
   `id` int(11) NOT NULL,
   `forecast_date` date NOT NULL,
@@ -77,6 +82,8 @@ CREATE TABLE `inventory` (
   `cup_size` varchar(50) DEFAULT NULL,
   `unit` varchar(50) DEFAULT 'pcs',
   `qty` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `unit_cost` decimal(10,2) DEFAULT NULL,
+  `unit_cost_source` enum('estimate','verified') DEFAULT NULL,
   `critical_level` decimal(10,2) DEFAULT NULL,
   `safety_stock` decimal(10,2) NOT NULL DEFAULT 0.00,
   `lead_time_days` int(11) NOT NULL DEFAULT 1,
@@ -90,9 +97,12 @@ CREATE TABLE `inventory_logs` (
   `inventory_id` int(11) NOT NULL,
   `order_id` int(11) DEFAULT NULL,
   `user_id` int(11) DEFAULT NULL,
-  `change_type` enum('added','restock','used','deduct','auto-deduct','damage','adjustment') NOT NULL,
+  `change_type` enum('added','restock','used','deduct','auto-deduct','damage','spoilage','adjustment') NOT NULL,
   `quantity` decimal(10,2) NOT NULL,
   `remaining` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `loss_unit_cost` decimal(10,2) DEFAULT NULL,
+  `loss_value` decimal(18,2) DEFAULT NULL,
+  `loss_cost_source` enum('estimate','verified') DEFAULT NULL,
   `remarks` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -144,12 +154,28 @@ CREATE TABLE `orders` (
   `service_details` text DEFAULT NULL,
   `job_status` enum('queued','in_progress','ready','completed','cancelled') NOT NULL DEFAULT 'queued',
   `total` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `subtotal` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `discount_type` enum('none','promo','senior','pwd') NOT NULL DEFAULT 'none',
+  `discount_rate` decimal(5,2) NOT NULL DEFAULT 0.00,
+  `discount_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `vat_exempt_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `discount_beneficiary_type` enum('senior','pwd') DEFAULT NULL,
+  `discount_customer_name` varchar(100) DEFAULT NULL,
+  `discount_customer_tin` varchar(32) DEFAULT NULL,
+  `discount_id_number` varchar(64) DEFAULT NULL,
+  `discount_applied_by` int(11) DEFAULT NULL,
+  `exclusive_use_confirmed` tinyint(1) NOT NULL DEFAULT 0,
+  `promo_percent` decimal(5,2) NOT NULL DEFAULT 0.00,
   `status` enum('pending','completed','cancelled','void','voided') DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
   `voided_at` datetime DEFAULT NULL,
   `cancelled_at` datetime DEFAULT NULL,
-  `inventory_deducted_at` datetime DEFAULT NULL
+  `inventory_deducted_at` datetime DEFAULT NULL,
+  `transaction_no` varchar(40) DEFAULT NULL,
+  `sales_invoice_no` varchar(40) DEFAULT NULL,
+  `invoiced_at` datetime DEFAULT NULL,
+  `service_type` enum('dine_in','take_out') DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `order_items` (
@@ -222,6 +248,15 @@ CREATE TABLE `system_settings` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE `transaction_events` (
+  `id` bigint(20) UNSIGNED NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `actor_user_id` int(11) DEFAULT NULL,
+  `event_type` varchar(50) NOT NULL,
+  `details_json` longtext DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE `users` (
   `id` int(11) NOT NULL,
   `username` varchar(50) NOT NULL,
@@ -273,6 +308,9 @@ ALTER TABLE `daily_sales_reports`
   ADD UNIQUE KEY `report_date` (`report_date`),
   ADD KEY `generated_by` (`generated_by`);
 
+ALTER TABLE `document_sequences`
+  ADD PRIMARY KEY (`sequence_key`);
+
 ALTER TABLE `forecast_snapshots`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_forecast_metric` (`forecast_date`,`metric_type`,`subject_key`),
@@ -311,6 +349,8 @@ ALTER TABLE `notifications`
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_orders_order_code` (`order_code`),
+  ADD UNIQUE KEY `uniq_transaction_no` (`transaction_no`),
+  ADD UNIQUE KEY `uniq_sales_invoice_no` (`sales_invoice_no`),
   ADD KEY `user_id` (`user_id`),
   ADD KEY `idx_orders_status_date` (`status`,`created_at`),
   ADD KEY `idx_orders_customer` (`customer_id`),
@@ -349,6 +389,10 @@ ALTER TABLE `roles`
 
 ALTER TABLE `system_settings`
   ADD PRIMARY KEY (`setting_key`);
+
+ALTER TABLE `transaction_events`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_transaction_event_order` (`order_id`,`id`);
 
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
@@ -414,6 +458,9 @@ ALTER TABLE `payment_change_credits`
 ALTER TABLE `roles`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
+ALTER TABLE `transaction_events`
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+
 ALTER TABLE `users`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
@@ -470,5 +517,88 @@ ALTER TABLE `users`
 
 ALTER TABLE `user_guide_progress`
   ADD CONSTRAINT `fk_user_guide_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+DELIMITER $$
+CREATE TRIGGER `kape_service_type_event` AFTER UPDATE ON `orders` FOR EACH ROW BEGIN
+        IF NOT (OLD.service_type <=> NEW.service_type) THEN
+            INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json)
+            VALUES (NEW.id, @kape_actor_id, 'service_type_changed', JSON_OBJECT('old_type', OLD.service_type, 'service_type', NEW.service_type));
+        END IF;
+    END
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_transaction_create` BEFORE INSERT ON `orders` FOR EACH ROW BEGIN
+        DECLARE seq BIGINT;
+        DECLARE sequence_name VARCHAR(50);
+        SET sequence_name = CONCAT('transaction:', DATE_FORMAT(COALESCE(NEW.created_at, NOW()), '%Y%m%d'));
+        INSERT INTO document_sequences VALUES (sequence_name, 1) ON DUPLICATE KEY UPDATE last_number = last_number + 1;
+        SELECT last_number INTO seq FROM document_sequences WHERE sequence_key = sequence_name;
+        SET NEW.transaction_no = CONCAT('TRX-', DATE_FORMAT(COALESCE(NEW.created_at, NOW()), '%Y%m%d'), '-', LPAD(seq, GREATEST(4, CHAR_LENGTH(seq)), '0'));
+        SET NEW.sales_invoice_no = NULL;
+        SET NEW.invoiced_at = NULL;
+    END
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_transaction_delete_protect` BEFORE DELETE ON `orders` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Retain transactions for audit. Cancel or void the order instead.'
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_transaction_insert_event` AFTER INSERT ON `orders` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (NEW.id, @kape_actor_id, 'order_created', JSON_OBJECT('transaction_no', NEW.transaction_no, 'total', NEW.total, 'status', NEW.status))
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_transaction_protect` BEFORE UPDATE ON `orders` FOR EACH ROW BEGIN
+        IF NOT (OLD.transaction_no <=> NEW.transaction_no) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Transaction number is permanent.'; END IF;
+        IF OLD.sales_invoice_no IS NOT NULL AND (NOT (OLD.sales_invoice_no <=> NEW.sales_invoice_no) OR NOT (OLD.invoiced_at <=> NEW.invoiced_at) OR OLD.total <> NEW.total) THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'An invoiced sale cannot be renumbered or have its total changed. Create an additional order.';
+        END IF;
+    END
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_transaction_update_event` AFTER UPDATE ON `orders` FOR EACH ROW BEGIN
+        IF NOT (OLD.status <=> NEW.status) OR OLD.total <> NEW.total OR NOT (OLD.sales_invoice_no <=> NEW.sales_invoice_no) OR NOT (OLD.customer_name <=> NEW.customer_name) OR NOT (OLD.job_status <=> NEW.job_status) THEN
+            INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (NEW.id, @kape_actor_id, 'order_updated', JSON_OBJECT('old_status', OLD.status, 'status', NEW.status, 'old_total', OLD.total, 'total', NEW.total, 'sales_invoice_no', NEW.sales_invoice_no, 'job_status', NEW.job_status));
+        END IF;
+    END
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_event_item_delete` AFTER DELETE ON `order_items` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (OLD.order_id, @kape_actor_id, 'item_delete', JSON_OBJECT('item_id', OLD.item_id, 'qty', OLD.qty, 'price', OLD.price))
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_event_item_insert` AFTER INSERT ON `order_items` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (NEW.order_id, @kape_actor_id, 'item_insert', JSON_OBJECT('item_id', NEW.item_id, 'qty', NEW.qty, 'price', NEW.price))
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_event_item_update` AFTER UPDATE ON `order_items` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (NEW.order_id, @kape_actor_id, 'item_update', JSON_OBJECT('item_id', NEW.item_id, 'qty', NEW.qty, 'price', NEW.price))
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_event_payment_delete` AFTER DELETE ON `payments` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (OLD.order_id, @kape_actor_id, 'payment_delete', JSON_OBJECT('payment_id', OLD.id, 'provider', OLD.provider, 'amount', OLD.amount, 'status', OLD.status))
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_event_payment_insert` AFTER INSERT ON `payments` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (NEW.order_id, @kape_actor_id, 'payment_insert', JSON_OBJECT('payment_id', NEW.id, 'provider', NEW.provider, 'amount', NEW.amount, 'status', NEW.status))
+$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER `kape_event_payment_update` AFTER UPDATE ON `payments` FOR EACH ROW INSERT INTO transaction_events (order_id, actor_user_id, event_type, details_json) VALUES (NEW.order_id, @kape_actor_id, 'payment_update', JSON_OBJECT('payment_id', NEW.id, 'provider', NEW.provider, 'amount', NEW.amount, 'status', NEW.status))
+$$
+DELIMITER ;
 
 SET FOREIGN_KEY_CHECKS=1;

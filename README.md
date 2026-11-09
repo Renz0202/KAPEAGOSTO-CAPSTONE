@@ -63,25 +63,9 @@ Open `config/config.php` and set `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASS` 
 
 1. Start **Apache** and **MySQL** from the XAMPP Control Panel.
 2. In phpMyAdmin, create a database named `kape_agosto` using the `utf8mb4` character set.
-3. Import [`database/schema.sql`](database/schema.sql) into `kape_agosto`. It creates the application tables and constraints without importing customer, order, payment, or account records.
-4. Import [`database/seed.sql`](database/seed.sql) to add the built-in `admin`, `cashier`, and `manager` roles.
-5. Create the first administrator account. Generate a password hash in Command Prompt:
-
-   ```bat
-   C:\xampp\php\php.exe -r "echo password_hash('CHOOSE_A_STRONG_PASSWORD', PASSWORD_DEFAULT), PHP_EOL;"
-   ```
-
-   In phpMyAdmin’s SQL tab, insert your own username, name, email, and generated hash. Replace the sample values below first:
-
-   ```sql
-   INSERT INTO users
-     (username, full_name, first_name, last_name, email, password_hash, role_id, status)
-   VALUES
-     ('your-username', 'Your Name', 'Your First Name', 'Your Last Name',
-      'you@example.com', 'PASTE_GENERATED_HASH_HERE', 1, 'active');
-   ```
-
-   Do not use the sample values as real credentials or commit your password or hash. The schema-only export contains no default login account.
+3. Import [`database/schema.sql`](database/schema.sql) into `kape_agosto`. It creates the application tables, constraints, and triggers without importing customer, order, payment, or account records.
+4. Import [`database/seed.sql`](database/seed.sql) to add the built-in roles and one demo administrator account.
+5. Start the application and sign in with the demo account below. Change its password before using the system with real data or exposing it beyond a local demo.
 
 For an existing installation, see [`public/README.md`](public/README.md) for the one-time migrations required by older database schemas. Do not run those upgrade migrations after importing the current `database/schema.sql` on a fresh installation.
 
@@ -103,7 +87,12 @@ AI recommendations are optional. Configure a provider key through the applicatio
 
 ## Default Login Credentials
 
-No default username or password is distributed. Create the first administrator account using the database setup steps above, then create cashier and manager accounts from the application.
+The seed file creates this local demo administrator:
+
+- **Admin email / username:** `admin`
+- **Password:** `Admin@123`
+
+This shared demo password is included only to make local evaluation easier. Change it before using the application with real data or exposing it to a network.
 
 ---
 
