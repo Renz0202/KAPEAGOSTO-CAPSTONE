@@ -32,7 +32,7 @@ if (payment_is_order_paid($pdo, $orderId)) {
 
 payment_require_stripe();
 
-$amount = (float)$order['total'];
+$amount = max(0, (float) $order['total'] - payment_total_paid($pdo, $orderId));
 if ($amount <= 0) {
     http_response_code(400);
     die('Order has no amount to charge.');

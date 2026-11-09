@@ -4,10 +4,13 @@ ini_set('display_errors', 1);
 
 require_once dirname(__DIR__, 2) . "/includes/db.php";
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
+require_once dirname(__DIR__, 2) . '/includes/order_discounts.php';
+require_once dirname(__DIR__, 2) . '/includes/settings.php';
 require_capability('generate_reports');
 
 
 $pdo = db();
+$reportTaxType = settings_value(settings_all($pdo), 'bir_tax_type');
 $user = current_user();
 $date = isset($_GET['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date']) ? $_GET['date'] : date('Y-m-d');
 $today = date('Y-m-d');
@@ -33,7 +36,7 @@ $items = $pdo->prepare("
         i.name AS item_name,
         i.price,
         SUM(oi.qty) AS total_qty,
-        SUM(oi.subtotal) AS total_amount
+        SUM(oi.subtotal * CASE WHEN o.subtotal > 0 THEN o.total / o.subtotal ELSE 1 END) AS total_amount
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.id
     JOIN items i ON oi.item_id = i.id
@@ -57,8 +60,9 @@ if (!$items) {
     $message = "No completed orders found for $date.";
   }
 } else {
-    $total_sales = array_sum(array_column($items, 'total_amount'));
-    $sales_tax = round($total_sales * 0.12, 2);
+    $reportTotals = order_discount_report_totals($pdo, $date . ' 00:00:00', (new DateTimeImmutable($date))->modify('+1 day')->format('Y-m-d') . ' 00:00:00', $reportTaxType);
+    $total_sales = $reportTotals['total_sales'];
+    $sales_tax = $reportTotals['sales_tax'];
 
     // 🔹 Inventory activity logs for selected date
     $invLogs = $pdo->prepare("
@@ -191,7 +195,7 @@ if ($isRangeRequest) {
                     i.name AS item_name,
                     i.price,
                     SUM(oi.qty) AS total_qty,
-                    SUM(oi.subtotal) AS total_amount
+                    SUM(oi.subtotal * CASE WHEN o.subtotal > 0 THEN o.total / o.subtotal ELSE 1 END) AS total_amount
                 FROM order_items oi
                 JOIN orders o ON oi.order_id = o.id
                 JOIN items i ON oi.item_id = i.id
@@ -222,8 +226,9 @@ if ($isRangeRequest) {
                 continue;
             }
 
-            $total_sales = array_sum(array_column($items, 'total_amount'));
-            $sales_tax = round($total_sales * 0.12, 2);
+            $reportTotals = order_discount_report_totals($pdo, $date . ' 00:00:00', (new DateTimeImmutable($date))->modify('+1 day')->format('Y-m-d') . ' 00:00:00', $reportTaxType);
+            $total_sales = $reportTotals['total_sales'];
+            $sales_tax = $reportTotals['sales_tax'];
 
             $invLogs = $pdo->prepare("
                 SELECT 

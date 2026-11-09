@@ -51,7 +51,7 @@
     });
   }
 
-  function fallbackNotice(message, type) {
+  function fallbackNotice(message, type, onDismiss) {
     var notice = document.createElement('div');
     notice.className = 'kape-alert-fallback is-' + (type || 'message');
     notice.setAttribute('role', type === 'error' ? 'alert' : 'status');
@@ -62,17 +62,28 @@
     });
     setTimeout(function () {
       notice.classList.remove('is-visible');
-      setTimeout(function () { notice.remove(); }, 250);
+      setTimeout(function () { notice.remove(); if (onDismiss) onDismiss(); }, 250);
     }, 5000);
+    return { dismiss: function () { notice.remove(); if (onDismiss) onDismiss(); } };
   }
 
-  window.kapeNotify = function (message, type) {
+  var keyedNotices = new Map();
+  window.kapeNotify = function (message, type, key) {
     type = ['success', 'error', 'warning', 'message'].includes(type) ? type : 'message';
-    if (!configureAlertify()) {
-      fallbackNotice(message, type);
-      return null;
+    var existing = key && keyedNotices.get(key);
+    if (existing && existing.message === message) return existing.notice;
+    if (existing) existing.notice.dismiss();
+    var entry = { message: message, notice: null };
+    function onDismiss() {
+      if (key && keyedNotices.get(key) === entry) keyedNotices.delete(key);
     }
-    return window.alertify[type](escapeHtml(message));
+    if (!configureAlertify()) {
+      entry.notice = fallbackNotice(message, type, onDismiss);
+    } else {
+      entry.notice = window.alertify[type](escapeHtml(message), undefined, onDismiss);
+    }
+    if (key) keyedNotices.set(key, entry);
+    return entry.notice;
   };
 
   window.kapeAlert = function (options) {

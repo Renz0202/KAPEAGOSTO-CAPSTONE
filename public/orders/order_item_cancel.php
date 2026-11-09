@@ -3,11 +3,14 @@ session_start();
 require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
 require_once dirname(__DIR__, 2) . '/includes/payment.php';
+require_once dirname(__DIR__, 2) . '/includes/order_discounts.php';
+require_once dirname(__DIR__, 2) . '/includes/settings.php';
 require_capability('process_transactions');
 
 header('Content-Type: application/json');
 
 $pdo = db();
+$checkoutTaxType = settings_value(settings_all($pdo), 'bir_tax_type');
 
 $orderId = isset($_POST['order_id']) ? (int)$_POST['order_id'] : 0;
 $orderItemId = isset($_POST['order_item_id']) ? (int)$_POST['order_item_id'] : 0;
@@ -51,10 +54,13 @@ try {
     // Recompute order total from remaining items
     $sum = $pdo->prepare('SELECT COALESCE(SUM(subtotal),0) FROM order_items WHERE order_id = ?');
     $sum->execute([$orderId]);
-    $newTotal = (float)$sum->fetchColumn();
-
-    $upd = $pdo->prepare('UPDATE orders SET total = ? WHERE id = ?');
-    $upd->execute([$newTotal, $orderId]);
+    $newSubtotal = (float)$sum->fetchColumn();
+    $discount = order_discount_recalculate_pending($pdo, $orderId, $newSubtotal, $checkoutTaxType);
+    $newTotal = $discount['total'];
+    $paidBeforeUpdate = payment_total_paid($pdo, $orderId);
+    if ($newTotal + 0.009 < $paidBeforeUpdate) {
+        throw new Exception('Cannot remove items because the new total would be below the amount already paid.');
+    }
 
     // Compute updated payment stats
     $paid = payment_total_paid($pdo, $orderId);

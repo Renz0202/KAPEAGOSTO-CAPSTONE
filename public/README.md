@@ -34,7 +34,11 @@ Generated email/export HTML may still use inline CSS because it must be self-con
 
 ## Connectivity Requirement
 
-Kape Agosto requires an active internet connection. Login depends on Google reCAPTCHA, and the system does not provide offline access or offline data synchronization. Service-worker asset caching is intentionally disabled so the interface does not suggest that offline operation is supported.
+Direct sign-in at localhost, a loopback address, or the shop server's private IP address works without internet. Both the device and server must be on the local network, with Apache and MySQL running. Local sign-in checks the existing account password, active status, and role in the server database. When internet is available, reCAPTCHA appears and must be completed. During an internet outage, local sign-in becomes available after Google fails to load or the browser reports a lost connection. The server independently checks Google before accepting a local fallback; if Google can be reached, a valid reCAPTCHA token is still required. Use the server's private IP address when signing in from another shop device.
+
+Public-domain, public-IP, and proxied sign-in still require Google reCAPTCHA. Local mode is decided from the direct client/server addresses and request hostname; browser offline flags and forwarded IP headers cannot bypass online verification. Failed, expired, or malformed CAPTCHA responses are rejected whenever Google responds. The widget retries after connection failures and returns when internet is restored. All sign-ins require a session form token. Five failed attempts for a username from one client address trigger a wait of up to 15 minutes; a client address also has a budget of 30 total attempts per 15 minutes. The limits persist across browser sessions in locked storage outside the web root.
+
+This supports internet outages while the local server is reachable. It does not provide access when the local server or shop network is unavailable, or add offline data synchronization. Email recovery, online payments, and other external services still require internet. The local login page loads its assets from the server, without waiting for external fonts or scripts. Other pages may use browser font and icon fallbacks during an outage. Service-worker asset caching remains disabled.
 
 ## Core Module Alignment Migration
 
@@ -45,5 +49,14 @@ C:\xampp\php\php.exe database\migrations\20260812_align_core_modules.php
 ```
 
 The migration is idempotent and adds customer/job-order history, product and inventory SKUs, audited and idempotent inventory deductions, persistent notifications, and forecast snapshots. Historical orders and payments are retained permanently; the old daily order-reset endpoint is disabled.
+
+Run the current inventory loss-cost and customer-discount migrations once after updating the code:
+
+```powershell
+C:\xampp\php\php.exe database\migrations\20261028_add_inventory_loss_costs.php
+C:\xampp\php\php.exe database\migrations\20261028_add_order_discounts.php
+```
+
+These migrations preserve existing stock and order totals. Unit-cost estimates are marked separately from verified purchase costs. Admins set the POS promotional rate and optional inclusive date range in System Settings; managers set them in Forecast & Team Settings. All roles may apply the saved rate only while its date range is active, but it cannot be changed in the POS. Senior/PWD checkout records the beneficiary ID and applies the more favorable eligible discount without stacking.
 
 Local predictive analytics work without an API key. If OpenAI analytics is enabled in System Settings, the dashboard sends aggregate operational metrics (not customer details) to the Responses API at most once every six hours for a concise recommendation.

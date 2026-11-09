@@ -135,6 +135,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: users.php');
         exit;
     }
+
+    if ((string) ($_POST['return_to'] ?? '') === 'users.php') {
+        $_SESSION['flash'] = implode(' ', $errors);
+        $_SESSION['flash_type'] = 'error';
+        $_SESSION['edit_user_form'] = [
+            'id' => (int) $id,
+            'last_name' => $last_name,
+            'first_name' => $first_name,
+            'middle_name' => $middle_name,
+            'email' => $email,
+            'contact' => $contact,
+            'role_id' => $role_id,
+            'status' => $status,
+        ];
+
+        header('Location: users.php?edit=' . (int) $id);
+        exit;
+    }
 }
 
 $image = !empty($user['image']) ? basename($user['image']) : '';

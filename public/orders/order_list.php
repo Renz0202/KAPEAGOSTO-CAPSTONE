@@ -8,7 +8,10 @@ date_default_timezone_set('Asia/Manila');
 require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
 require_once dirname(__DIR__, 2) . '/includes/order_utils.php';
+require_once dirname(__DIR__, 2) . '/includes/order_date_filter.php';
 require_once dirname(__DIR__, 2) . '/includes/payment.php';
+require_once dirname(__DIR__, 2) . '/includes/item_variant.php';
+require_once dirname(__DIR__, 2) . '/includes/inventory_requirements.php';
 require_capability('view_order_history');
 
 $pdo = db();
@@ -16,6 +19,15 @@ $userRole = current_user_role();
 $isAdmin = is_admin();
 $canProcessTransactions = can('process_transactions');
 $historyScope = (($_GET['scope'] ?? '') === 'all') && (is_admin() || is_manager());
+$canFilterDates = is_admin() || is_manager();
+$period = $canFilterDates ? (string) ($_GET['period'] ?? '') : '';
+$periodValue = (string) ($_GET[$period === 'month' ? 'month' : ($period === 'year' ? 'year' : 'day')] ?? '');
+$dateRange = order_date_filter($period, $periodValue);
+$dateFilterError = $period !== '' && !$dateRange ? 'Please select a valid date, month, or year.' : '';
+if ($dateRange) $historyScope = true;
+$rangeLabel = $dateRange ? $periodValue : ($historyScope ? 'All Records' : 'Today');
+$serviceFilter = (string) ($_GET['service_type'] ?? '');
+if (!in_array($serviceFilter, ['dine_in', 'take_out'], true)) $serviceFilter = '';
 $hasAdminOverride = isset($_SESSION['admin_override']['expires']) && $_SESSION['admin_override']['expires'] >= time();
 $autoVoidOrderId = 0;
 
@@ -60,24 +72,24 @@ function order_list_get_inventory_status(PDO $pdo): array {
     $missingLidSizes = [];
 
     foreach ($requiredSizes as $size) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE name LIKE '%cup%' AND cup_size = ?");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE material_type = 'packaging' AND name LIKE '%cup%' AND cup_size = ?");
         $stmt->execute([$size]);
         if ((int) $stmt->fetchColumn() === 0) {
             $missingCupSizes[] = $size;
         }
 
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE (name LIKE '%flat lid%' OR name LIKE '%lid cover%' OR name LIKE '%flat cover%' OR name LIKE '%lid%') AND cup_size = ?");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE material_type = 'packaging' AND (name LIKE '%flat lid%' OR name LIKE '%lid cover%' OR name LIKE '%flat cover%' OR name LIKE '%lid%') AND cup_size = ?");
         $stmt->execute([$size]);
         if ((int) $stmt->fetchColumn() === 0) {
             $missingLidSizes[] = $size;
         }
     }
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE name LIKE '%straw%'");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE material_type = 'packaging' AND name LIKE '%straw%'");
     $stmt->execute();
     $missingStraw = ((int) $stmt->fetchColumn() === 0);
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE name LIKE '%stirrer%'");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE material_type = 'packaging' AND name LIKE '%stirrer%'");
     $stmt->execute();
     $missingStirrer = ((int) $stmt->fetchColumn() === 0);
 
@@ -140,7 +152,7 @@ function ensure_daily_order_code(PDO $pdo, int $orderId, string $createdAt, ?str
 
 function order_list_fetch_items(PDO $pdo, int $orderId): array {
     $stmt = $pdo->prepare('
-        SELECT i.name, i.cup_size, oi.qty, oi.price
+        SELECT oi.item_id, i.name, i.cup_size, oi.qty, oi.price
         FROM order_items oi
         JOIN items i ON i.id = oi.item_id
         WHERE oi.order_id = ?
@@ -151,76 +163,18 @@ function order_list_fetch_items(PDO $pdo, int $orderId): array {
 }
 
 function order_list_inventory_warnings(PDO $pdo, array $items): array {
-    $blocking = [];
-    $low = [];
-    $hasHotDrink = false;
-    $hasColdDrink = false;
-    $coldDrinkQty = 0;
-
+    $warnings = inventory_service_stock_warnings($pdo, $items);
+    $warnings['has_hot_drink'] = false;
+    $warnings['has_cold_drink'] = false;
     foreach ($items as $item) {
-        $cupSize = trim((string) ($item['cup_size'] ?? ''));
-        $qty = max(1, (int) ($item['qty'] ?? 1));
-        $isHot = $cupSize === '12oz Hot' || stripos((string) $item['name'], 'hot') !== false;
-
-        if ($isHot) {
-            $hasHotDrink = true;
-        } elseif ($cupSize !== '' && $cupSize !== '-') {
-            $hasColdDrink = true;
-            $coldDrinkQty += $qty;
-        }
-
-        $checks = [
-            ['label' => 'Cup (' . ($cupSize ?: '-') . ')', 'sql' => "SELECT qty, critical_level FROM inventory WHERE name LIKE '%cup%' AND cup_size = ? LIMIT 1", 'params' => [$cupSize]],
-            ['label' => 'Flat Lid (' . ($cupSize ?: '-') . ')', 'sql' => "SELECT qty, critical_level FROM inventory WHERE (name LIKE '%flat lid%' OR name LIKE '%lid cover%' OR name LIKE '%flat cover%' OR name LIKE '%lid%') AND cup_size = ? LIMIT 1", 'params' => [$cupSize]],
-        ];
-
-        if ($isHot) {
-            $checks[] = ['label' => 'Coffee Stirrer', 'sql' => "SELECT qty, critical_level FROM inventory WHERE name LIKE '%stirrer%' LIMIT 1", 'params' => []];
-        }
-
-        foreach ($checks as $check) {
-            $stmt = $pdo->prepare($check['sql']);
-            $stmt->execute($check['params']);
-            $inventory = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$inventory) {
-                $blocking[] = $check['label'] . ' missing';
-                continue;
-            }
-
-            if ((float) $inventory['qty'] < $qty) {
-                $blocking[] = $check['label'] . ' out of stock';
-                continue;
-            }
-
-            if ($inventory['critical_level'] !== null && (float) $inventory['critical_level'] > 0 && (float) $inventory['qty'] <= (float) $inventory['critical_level']) {
-                $low[] = $check['label'] . ' low';
-            }
+        if (item_variant_is_hot((string) $item['cup_size'], (string) $item['name'])) {
+            $warnings['has_hot_drink'] = true;
+        } else {
+            $warnings['has_cold_drink'] = true;
         }
     }
-
-    if ($hasColdDrink) {
-        $stmt = $pdo->prepare("SELECT qty, critical_level FROM inventory WHERE name LIKE '%straw%' LIMIT 1");
-        $stmt->execute();
-        $straw = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$straw) {
-            $blocking[] = 'Straw missing';
-        } elseif ((float) $straw['qty'] < $coldDrinkQty) {
-            $blocking[] = 'Straw out of stock';
-        } elseif ($straw['critical_level'] !== null && (float) $straw['critical_level'] > 0 && (float) $straw['qty'] <= (float) $straw['critical_level']) {
-            $low[] = 'Straw low';
-        }
-    }
-
-    return [
-        'blocking' => array_values(array_unique($blocking)),
-        'low' => array_values(array_unique($low)),
-        'has_hot_drink' => $hasHotDrink,
-        'has_cold_drink' => $hasColdDrink,
-    ];
+    return $warnings;
 }
-
 function order_list_order_summary(array $items): array {
     $names = [];
     $sizes = [];
@@ -243,13 +197,62 @@ function order_list_order_summary(array $items): array {
     ];
 }
 
+// Refresh order cards when orders, payments, material stock, or recipes change.
+$today = date('Y-m-d');
+$signatureWhere = '';
+$signatureParams = [];
+if ($dateRange) {
+    $signatureWhere = ' WHERE o.created_at >= ? AND o.created_at < ?';
+    $signatureParams = $dateRange;
+} elseif (!$historyScope) {
+    $signatureWhere = ' WHERE o.created_at >= ? AND o.created_at < ?';
+    $signatureParams = [$today . ' 00:00:00', date('Y-m-d', strtotime($today . ' +1 day')) . ' 00:00:00'];
+}
+
+if ($serviceFilter !== '') {
+    $signatureWhere .= ($signatureWhere === '' ? ' WHERE ' : ' AND ') . 'o.service_type = ?';
+    $signatureParams[] = $serviceFilter;
+}
+$orderSignatureSql = "
+    SELECT COUNT(*) AS row_count, COALESCE(MAX(o.id), 0) AS latest_id,
+           COALESCE(SUM(CRC32(CONCAT_WS('|', o.id, COALESCE(o.order_code, ''), COALESCE(o.customer_name, ''), o.total, o.status, COALESCE(o.service_type, ''), COALESCE(o.job_status, ''), COALESCE(o.updated_at, o.created_at)))), 0) AS checksum
+    FROM orders o
+" . $signatureWhere;
+$orderSignatureStmt = $pdo->prepare($orderSignatureSql);
+$orderSignatureStmt->execute($signatureParams);
+$orderSignature = $orderSignatureStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$paymentSignatureSql = "
+    SELECT COUNT(p.id) AS row_count, COALESCE(MAX(p.id), 0) AS latest_id,
+           COALESCE(SUM(CRC32(CONCAT_WS('|', p.id, p.order_id, p.amount, p.status, COALESCE(p.updated_at, p.created_at)))), 0) AS checksum
+    FROM payments p
+    INNER JOIN orders o ON o.id = p.order_id
+" . ($signatureWhere !== '' ? str_replace('o.created_at', 'o.created_at', $signatureWhere) : '');
+$paymentSignatureStmt = $pdo->prepare($paymentSignatureSql);
+$paymentSignatureStmt->execute($signatureParams);
+$paymentSignature = $paymentSignatureStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$inventorySignature = $pdo->query("SELECT COUNT(*) AS row_count, COALESCE(SUM(CRC32(CONCAT_WS('|', id, name, material_type, COALESCE(cup_size, ''), qty, unit, COALESCE(critical_level, '')))), 0) AS checksum FROM inventory")->fetch(PDO::FETCH_ASSOC) ?: [];
+$recipeSignature = $pdo->query("SELECT COUNT(*) AS row_count, COALESCE(SUM(CRC32(CONCAT_WS('|', item_id, inventory_id, quantity_needed))), 0) AS checksum FROM item_requirements")->fetch(PDO::FETCH_ASSOC) ?: [];
+$liveVersion = hash('sha256', implode(':', [
+    implode(',', $orderSignature),
+    implode(',', $paymentSignature),
+    implode(',', $inventorySignature),
+    implode(',', $recipeSignature),
+]));
+
+if (isset($_GET['_changes'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode(['version' => $liveVersion]);
+    exit;
+}
 $inventoryStatus = order_list_get_inventory_status($pdo);
 $search = trim($_GET['search'] ?? '');
 $today = date('Y-m-d');
 $params = [];
 
 $query = "
-    SELECT o.id, o.order_code, o.customer_name AS customer, o.customer_id, o.service_details,
+    SELECT o.id, o.order_code, o.transaction_no, o.sales_invoice_no, o.service_type, o.customer_name AS customer, o.customer_id, o.service_details,
            o.job_status, o.total, o.status, o.created_at, c.contact AS customer_contact,
            c.email AS customer_email,
            u.username AS generated_username,
@@ -260,14 +263,21 @@ $query = "
     LEFT JOIN roles r ON r.id = u.role_id
     WHERE 1 = 1
 ";
-if (!$historyScope) {
+if ($dateRange) {
+    $query .= ' AND o.created_at >= ? AND o.created_at < ?';
+    $params = $dateRange;
+} elseif (!$historyScope) {
     $query .= ' AND DATE(o.created_at) = ?';
     $params[] = $today;
 }
 
+if ($serviceFilter !== '') {
+    $query .= ' AND o.service_type = ?';
+    $params[] = $serviceFilter;
+}
 if ($search !== '') {
-    $query .= " AND (o.customer_name LIKE ? OR c.customer_code LIKE ? OR c.contact LIKE ? OR c.email LIKE ? OR o.service_details LIKE ? OR CAST(o.id AS CHAR) LIKE ? OR o.order_code LIKE ? OR DATE_FORMAT(o.created_at, '%Y-%m-%d') LIKE ? OR u.full_name LIKE ? OR u.username LIKE ?)";
-    for ($i = 0; $i < 10; $i++) $params[] = '%' . $search . '%';
+    $query .= " AND (o.customer_name LIKE ? OR c.customer_code LIKE ? OR c.contact LIKE ? OR c.email LIKE ? OR o.service_details LIKE ? OR CAST(o.id AS CHAR) LIKE ? OR o.order_code LIKE ? OR DATE_FORMAT(o.created_at, '%Y-%m-%d') LIKE ? OR u.full_name LIKE ? OR u.username LIKE ? OR o.transaction_no LIKE ? OR o.sales_invoice_no LIKE ?)";
+    for ($i = 0; $i < 12; $i++) $params[] = '%' . $search . '%';
 }
 
 $query .= ' ORDER BY o.id DESC';
@@ -305,6 +315,9 @@ foreach ($orders as $order) {
 
     $orderCards[] = [
         'id' => $orderId,
+        'sales_invoice_no' => $order['sales_invoice_no'],
+        'transaction_no' => $order['transaction_no'],
+        'service_type' => $order['service_type'],
         'code' => $code,
         'customer' => $order['customer'] ?: 'Walk-in',
         'customer_contact' => $order['customer_contact'] ?? '',
@@ -333,6 +346,8 @@ if (isset($_GET['ajax'])) {
             return [
                 'id' => $order['id'],
                 'order_code' => $order['code'],
+                'transaction_no' => $order['transaction_no'],
+                'sales_invoice_no' => $order['sales_invoice_no'],
                 'customer' => $order['customer'],
                 'status' => $order['status'],
                 'created_at' => $order['created_at'],
@@ -358,15 +373,15 @@ if (isset($_GET['ajax'])) {
 <?php include dirname(__DIR__, 2) . '/includes/sidebar.php'; ?>
 <?php include dirname(__DIR__, 2) . '/includes/topbar.php'; ?>
 
-<main class="content order-list-page">
+<main class="content order-list-page" data-live-version="<?= htmlspecialchars($liveVersion, ENT_QUOTES) ?>">
   <section class="order-list-heading" aria-labelledby="order-list-title">
     <div>
       <p class="order-list-breadcrumb"><?= htmlspecialchars(role_display_name(current_user_role())) ?> <i class="fa fa-chevron-right"></i> Order List</p>
-      <h1 id="order-list-title"><?= $historyScope ? 'Complete Order History' : 'Order List' ?></h1>
-      <p class="order-list-copy"><?= $historyScope ? 'Review retained customer, job, payment, and transaction history across all dates.' : ($canProcessTransactions ? "Review today's orders, settle payments, complete paid carts, and manage void requests." : 'Review order history and transaction performance in read-only mode.') ?></p>
+      <h1 id="order-list-title"><?= $dateRange ? 'Order History — ' . htmlspecialchars($rangeLabel) : ($historyScope ? 'Complete Order History' : 'Order List') ?></h1>
+      <p class="order-list-copy"><?= $dateRange ? 'Review orders, payments, and sales for the selected period.' : ($historyScope ? 'Review retained customer, job, payment, and transaction history across all dates.' : ($canProcessTransactions ? "Review today's orders, settle payments, complete paid carts, and manage void requests." : 'Review order history and transaction performance in read-only mode.')) ?></p>
     </div>
-    <div class="order-list-summary" aria-label="Order list summary">
-      <span><strong><?= number_format(count($orderCards)) ?></strong> <?= $historyScope ? 'All Records' : 'Today' ?></span>
+    <div class="order-list-summary" id="order-list-summary" aria-label="Order list summary">
+      <span><strong><?= number_format(count($orderCards)) ?></strong> <?= htmlspecialchars($rangeLabel) ?></span>
       <span><strong><?= number_format($pendingCount) ?></strong> Pending</span>
       <span><strong><?= number_format($completedCount) ?></strong> Completed</span>
       <span><strong><?= htmlspecialchars(order_list_money($todayTotal)) ?></strong> Sales</span>
@@ -423,19 +438,44 @@ if (isset($_GET['ajax'])) {
   <section class="order-list-toolbar">
     <form method="get" class="order-list-search">
       <?php if ($historyScope): ?><input type="hidden" name="scope" value="all"><?php endif; ?>
-      <label for="order-search">Search Orders</label>
+      <div class="order-search-field"><label for="order-search">Search Orders</label>
       <input id="order-search" type="search" name="search" placeholder="Search by order, customer, or date" value="<?= htmlspecialchars($search) ?>">
-      <button type="submit"><i class="fa fa-magnifying-glass"></i> Search</button>
-      <?php if ($search !== ''): ?><a href="order_list.php<?= $historyScope ? '?scope=all' : '' ?>">Reset</a><?php endif; ?>
+      </div>
+      <?php if ($canFilterDates): ?>
+        <div class="order-date-filters">
+          <label for="order-period">Filter by
+            <select id="order-period" name="period">
+              <option value="">Default view</option>
+              <?php foreach (['day' => 'Day', 'month' => 'Month', 'year' => 'Year'] as $key => $label): ?>
+                <option value="<?= $key ?>" <?= $period === $key ? 'selected' : '' ?>><?= $label ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <label data-order-period="day">Date<input type="date" name="day" value="<?= htmlspecialchars((string) ($_GET['day'] ?? date('Y-m-d'))) ?>"></label>
+          <label data-order-period="month">Month<input type="month" name="month" value="<?= htmlspecialchars((string) ($_GET['month'] ?? date('Y-m'))) ?>"></label>
+          <label data-order-period="year">Year<input type="number" name="year" min="1000" max="9998" step="1" value="<?= htmlspecialchars((string) ($_GET['year'] ?? date('Y'))) ?>"></label>
+        </div>
+        <?php if ($dateFilterError): ?><span role="alert"><?= htmlspecialchars($dateFilterError) ?></span><?php endif; ?>
+      <?php endif; ?>
+      <label class="order-type-filter" for="order-service-filter">Order Type
+        <select id="order-service-filter" name="service_type">
+          <option value="">All Types</option>
+          <option value="dine_in" <?= $serviceFilter === 'dine_in' ? 'selected' : '' ?>>Dine-in</option>
+          <option value="take_out" <?= $serviceFilter === 'take_out' ? 'selected' : '' ?>>Take-out</option>
+        </select>
+      </label>
+      <a class="order-filter-reset" href="order_list.php<?= $historyScope ? '?scope=all' : '' ?>">Reset</a>
     </form>
     <?php if (is_admin() || is_manager()): ?>
       <a class="order-list-create" href="<?= $historyScope ? 'order_list.php' : 'order_list.php?scope=all' ?>"><i class="fa fa-clock-rotate-left"></i> <?= $historyScope ? "Today's Orders" : 'Full History' ?></a>
       <a class="order-list-create" href="customers.php"><i class="fa fa-users"></i> Customers</a>
     <?php endif; ?>
-    <?php if ($canProcessTransactions): ?><a class="order-list-create" href="orders.php"><i class="fa fa-cash-register"></i> Manage Order</a><?php endif; ?>
+    <div class="order-list-live-status" role="status" aria-live="polite">
+      <span><i class="fa fa-circle" aria-hidden="true"></i> <span id="order-live-message">Live updates on</span></span>
+    </div>
   </section>
 
-  <section class="orders-grid" aria-label="<?= $historyScope ? 'Complete order history' : "Today's orders" ?>">
+  <section class="orders-grid" id="orders-grid" aria-label="<?= $historyScope ? 'Complete order history' : "Today's orders" ?>">
     <?php if (!empty($orderCards)): ?>
       <?php foreach ($orderCards as $order): ?>
         <?php
@@ -444,14 +484,17 @@ if (isset($_GET['ajax'])) {
           $isVoided = in_array($order['status'], ['void', 'voided', 'cancelled'], true);
           $hasInventoryBlock = !empty($order['warnings']['blocking']);
           $isPaid = $order['remaining'] <= 0.009;
-          $canComplete = $isPending && !$hasInventoryBlock && $isPaid;
+          $canComplete = $isPending && !$hasInventoryBlock && $isPaid && !empty($order['warnings']['requirements']);
           $statusClass = $order['status'] === 'voided' ? 'void' : $order['status'];
         ?>
         <article class="order-card" data-order-id="<?= (int) $order['id'] ?>" data-order-code="<?= htmlspecialchars($order['code']) ?>">
           <div class="order-card-header">
             <div>
-              <span class="order-code">Order ID: #<?= htmlspecialchars($order['code']) ?></span>
-              <h2><?= htmlspecialchars($order['customer']) ?></h2>
+              <span class="order-claim-number">Order No. <?= htmlspecialchars($order['code']) ?></span>
+              <span class="order-code">Transaction Number: <?= htmlspecialchars(order_transaction_number((int) $order['id'], $order['transaction_no'])) ?></span>
+              <?php if ($order['sales_invoice_no']): ?><span class="order-code">Invoice: <?= htmlspecialchars($order['sales_invoice_no']) ?></span><?php endif; ?>
+              <h2><?= htmlspecialchars(order_customer_display($order['customer'], $order['service_type'])) ?></h2>
+              <?php if (order_customer_display($order['customer'], $order['service_type']) !== order_service_type_label($order['service_type'])): ?><span class="order-type-badge"><?= htmlspecialchars(order_service_type_label($order['service_type'])) ?></span><?php endif; ?>
             </div>
             <span class="order-status status-<?= htmlspecialchars($statusClass) ?>" title="<?= htmlspecialchars(order_list_status_help($order['status'])) ?>">
               <?= htmlspecialchars(order_list_status_label($order['status'])) ?>
@@ -476,9 +519,10 @@ if (isset($_GET['ajax'])) {
               <dd><?= htmlspecialchars(order_list_money($order['total'])) ?></dd>
             </div>
             <div>
-              <dt>Paid</dt>
+              <dt>Amount Paid</dt>
               <dd><?= htmlspecialchars(order_list_money($order['paid'])) ?></dd>
             </div>
+            <div><dt>Payment</dt><dd><?= $isPaid ? 'Paid' : ($order['paid'] > 0 ? 'Partially Paid' : 'Unpaid') ?></dd></div>
             <div>
               <dt>Order Date</dt>
               <dd><?= htmlspecialchars(date('Y-m-d h:i A', strtotime($order['created_at']))) ?></dd>
@@ -488,8 +532,8 @@ if (isset($_GET['ajax'])) {
               <dd><?= htmlspecialchars($order['generated_by']) ?></dd>
             </div>
             <div>
-              <dt>Job Status</dt>
-              <dd><?= htmlspecialchars(ucwords(str_replace('_', ' ', $order['job_status']))) ?></dd>
+              <dt>Preparation</dt>
+              <dd><?= htmlspecialchars(order_preparation_label($order['job_status'])) ?></dd>
             </div>
             <?php if ($order['customer_contact'] !== '' || $order['customer_email'] !== ''): ?>
             <div>
@@ -521,6 +565,14 @@ if (isset($_GET['ajax'])) {
             </div>
           <?php endif; ?>
 
+          <?php if ($isPending && !empty($order['warnings']['requirements'])): ?>
+            <div class="order-card-note neutral">
+              <strong>Materials used when marked Done:</strong>
+              <?= htmlspecialchars(implode('; ', array_map(static function ($material) {
+                  return $material['name'] . (!empty($material['cup_size']) ? ' (' . $material['cup_size'] . ')' : '') . ' - ' . inventory_service_format_quantity((float) $material['quantity']) . ' ' . $material['unit'];
+              }, $order['warnings']['requirements']))) ?>
+            </div>
+          <?php endif; ?>
           <?php if ($isPending && $order['warnings']['has_hot_drink']): ?>
             <div class="order-card-note neutral">Hot drinks use Coffee Stirrer only.</div>
           <?php elseif ($isPending && $order['warnings']['has_cold_drink']): ?>
@@ -571,7 +623,7 @@ if (isset($_GET['ajax'])) {
       <div class="order-list-empty">
         <i class="fa fa-receipt"></i>
         <strong>No orders found.</strong>
-        <span><?= $search !== '' ? 'Try another search term.' : 'New orders will appear here today.' ?></span>
+        <span><?= $search !== '' ? 'Try another search term.' : ($historyScope ? 'No orders recorded for this period.' : 'New orders will appear here today.') ?></span>
       </div>
     <?php endif; ?>
   </section>
@@ -615,6 +667,58 @@ if (isset($_GET['ajax'])) {
 </form>
 
 <script>
+const orderPeriodSelect = document.getElementById('order-period');
+function syncOrderPeriodInputs() {
+  document.querySelectorAll('[data-order-period]').forEach(label => {
+    const selected = label.dataset.orderPeriod === orderPeriodSelect?.value;
+    label.hidden = !selected;
+    label.querySelector('input').disabled = !selected;
+  });
+}
+orderPeriodSelect?.addEventListener('change', syncOrderPeriodInputs);
+syncOrderPeriodInputs();
+const orderFilterForm = document.querySelector('.order-list-search');
+let orderFilterTimer;
+let orderFilterRequest;
+async function applyOrderFilters() {
+  if (!orderFilterForm.reportValidity()) return;
+  orderFilterRequest?.abort();
+  const controller = new AbortController();
+  orderFilterRequest = controller;
+  const url = new URL(window.location.href);
+  url.search = new URLSearchParams(new FormData(orderFilterForm)).toString();
+  const status = document.getElementById('order-live-message');
+  status.textContent = 'Filtering orders...';
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    if (!response.ok) throw new Error('Filter failed');
+    const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+    if (controller.signal.aborted) return;
+    for (const selector of ['#orders-grid', '#order-list-summary', '#order-list-title', '.order-list-copy']) {
+      const current = document.querySelector(selector);
+      const next = page.querySelector(selector);
+      if (current && next) current.innerHTML = next.innerHTML;
+    }
+    // Keep navigation and the live updater on the selected period.
+    document.querySelectorAll('.order-list-toolbar > .order-list-create').forEach((link, index) => {
+      const next = page.querySelectorAll('.order-list-toolbar > .order-list-create')[index];
+      if (next) { link.href = next.href; link.innerHTML = next.innerHTML; }
+    });
+    history.replaceState(null, '', url);
+    status.textContent = 'Live updates on';
+  } catch (error) {
+    if (error.name !== 'AbortError') status.textContent = 'Unable to filter. Please try again.';
+  }
+}
+function scheduleOrderFilters() {
+  clearTimeout(orderFilterTimer);
+  orderFilterTimer = setTimeout(applyOrderFilters, 350);
+}
+orderFilterForm?.addEventListener('submit', event => { event.preventDefault(); clearTimeout(orderFilterTimer); applyOrderFilters(); });
+document.getElementById('order-search')?.addEventListener('input', scheduleOrderFilters);
+document.getElementById('order-service-filter')?.addEventListener('change', () => { clearTimeout(orderFilterTimer); applyOrderFilters(); });
+orderPeriodSelect?.addEventListener('change', () => { clearTimeout(orderFilterTimer); applyOrderFilters(); });
+document.querySelectorAll('[data-order-period] input').forEach(input => input.addEventListener('change', scheduleOrderFilters));
 function setOrderModal(id, open) {
   const modal = document.getElementById(id);
   if (!modal) return;
@@ -715,6 +819,81 @@ document.getElementById('adminLoginForm')?.addEventListener('submit', function(e
     });
 });
 
+// Poll a compact order/payment signature, and reload card markup only after a change.
+(function() {
+  const liveMessage = document.getElementById('order-live-message');
+  const currentGrid = document.getElementById('orders-grid');
+  const currentSummary = document.getElementById('order-list-summary');
+  const currentPage = document.querySelector('main.order-list-page');
+  if (!liveMessage || !currentGrid || !currentSummary || !currentPage) return;
+
+  let knownVersion = currentPage.dataset.liveVersion || '';
+  let refreshing = false;
+  let checking = false;
+  const shouldPause = function() {
+    return document.hidden ||
+      document.querySelector('.order-list-modal.is-open') !== null ||
+      (document.activeElement && document.activeElement.closest('.orders-grid'));
+  };
+
+  async function refreshOrders() {
+    if (refreshing || shouldPause()) return;
+    refreshing = true;
+    const finishLoading = window.KapeLoading?.start({ label: 'Updating orders...' });
+    try {
+      const refreshUrl = new URL(window.location.href);
+      refreshUrl.searchParams.delete('_changes');
+      refreshUrl.searchParams.set('_live_refresh', String(Date.now()));
+      const response = await fetch(refreshUrl.toString(), {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!response.ok) throw new Error('Refresh failed');
+      const html = await response.text();
+      const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+      const nextGrid = refreshedPage.getElementById('orders-grid');
+      const nextSummary = refreshedPage.getElementById('order-list-summary');
+      const nextPage = refreshedPage.querySelector('main.order-list-page');
+      if (!nextGrid || !nextSummary || !nextPage) throw new Error('Unexpected response');
+
+      if (currentGrid.innerHTML !== nextGrid.innerHTML) currentGrid.innerHTML = nextGrid.innerHTML;
+      if (currentSummary.innerHTML !== nextSummary.innerHTML) currentSummary.innerHTML = nextSummary.innerHTML;
+      knownVersion = nextPage.dataset.liveVersion || knownVersion;
+      currentPage.dataset.liveVersion = knownVersion;
+      liveMessage.textContent = 'Updated ' + new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(new Date());
+    } catch (error) {
+      liveMessage.textContent = 'Live refresh unavailable';
+    } finally {
+      finishLoading?.();
+      refreshing = false;
+    }
+  }
+
+  async function checkForChanges() {
+    if (refreshing || checking || shouldPause()) return;
+    checking = true;
+    try {
+      const checkUrl = new URL(window.location.href);
+      checkUrl.searchParams.delete('_live_refresh');
+      checkUrl.searchParams.set('_changes', '1');
+      checkUrl.searchParams.set('_check', String(Date.now()));
+      const response = await fetch(checkUrl.toString(), {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!response.ok) throw new Error('Change check failed');
+      const result = await response.json();
+      if (result.version && result.version !== knownVersion) await refreshOrders();
+    } catch (error) {
+      liveMessage.textContent = 'Live refresh unavailable';
+    } finally {
+      checking = false;
+    }
+  }
+  window.setInterval(checkForChanges, <?= $historyScope ? 5000 : 2000 ?>);
+})();
 <?php if ($autoVoidOrderId > 0): ?>
 document.addEventListener('DOMContentLoaded', function() {
   openConfirmVoidModal(<?= (int) $autoVoidOrderId ?>);

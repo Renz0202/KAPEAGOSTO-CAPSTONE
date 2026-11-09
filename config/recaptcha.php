@@ -1,8 +1,17 @@
 <?php
 // Get keys from: https://www.google.com/recaptcha/admin/create
-// Store them in the local .env/environment; never commit the secret key.
-define('RECAPTCHA_SITE_KEY', getenv('RECAPTCHA_SITE_KEY') ?: '');
-define('RECAPTCHA_SECRET_KEY', getenv('RECAPTCHA_SECRET_KEY') ?: '');
+// Keep local credentials in recaptcha.local.php, which is excluded from Git.
+$recaptchaLocalConfig = __DIR__ . '/recaptcha.local.php';
+if (is_file($recaptchaLocalConfig)) {
+    require $recaptchaLocalConfig;
+}
+
+if (!defined('RECAPTCHA_SITE_KEY')) {
+    define('RECAPTCHA_SITE_KEY', getenv('RECAPTCHA_SITE_KEY') ?: '');
+}
+if (!defined('RECAPTCHA_SECRET_KEY')) {
+    define('RECAPTCHA_SECRET_KEY', getenv('RECAPTCHA_SECRET_KEY') ?: '');
+}
 
 // Required when domain validation is disabled in the reCAPTCHA console for LAN use.
 // Add stable production domains here; private LAN IPv4 addresses are checked below.

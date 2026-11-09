@@ -1,0 +1,143 @@
+{
+  "applied": {
+    "mode": "historical_usage_only",
+    "batch": "265a0d52017b3606",
+    "orders_corrected": 80,
+    "ingredients": 27,
+    "usage_records_added": 377,
+    "missing_usage_remaining": 0,
+    "current_stock_unchanged": true,
+    "packaging_unchanged": true
+  },
+  "checks": 65,
+  "verification": {
+    "original_log_rows": 367,
+    "original_logs_sha256": "0e0ba5055277574b62cbdc7f06286b44a89ac9666a184f3be1b9d1dd01833207",
+    "new_records": 377,
+    "all_new_records_correctly_linked_and_labeled": true,
+    "remaining_preview": {
+      "completed_orders": 82,
+      "orders_needing_correction": 0,
+      "orders_with_recorded_ingredient_usage": 82,
+      "ingredient_corrections": 0,
+      "ingredients": 0,
+      "ingredients_with_shortages": 0,
+      "earliest_order_created_at": "2026-09-16 15:53:47",
+      "latest_order_created_at": "2026-10-09 18:26:58"
+    },
+    "issues": [],
+    "warnings": [],
+    "over_recorded_usage": [],
+    "original_logs_unchanged": true
+  },
+  "tables": {
+    "categories": {
+      "rows_before": 7,
+      "rows_after": 7,
+      "unchanged": true
+    },
+    "customers": {
+      "rows_before": 13,
+      "rows_after": 13,
+      "unchanged": true
+    },
+    "daily_reports": {
+      "rows_before": 19,
+      "rows_after": 19,
+      "unchanged": true
+    },
+    "daily_sales_items": {
+      "rows_before": 32,
+      "rows_after": 32,
+      "unchanged": true
+    },
+    "daily_sales_reports": {
+      "rows_before": 4,
+      "rows_after": 4,
+      "unchanged": true
+    },
+    "forecast_snapshots": {
+      "rows_before": 1240,
+      "rows_after": 1240,
+      "unchanged": true
+    },
+    "inventory": {
+      "rows_before": 42,
+      "rows_after": 42,
+      "unchanged": true
+    },
+    "inventory_logs": {
+      "rows_before": 367,
+      "rows_after": 744,
+      "unchanged": false
+    },
+    "item_recipe_metadata": {
+      "rows_before": 80,
+      "rows_after": 80,
+      "unchanged": true
+    },
+    "item_requirements": {
+      "rows_before": 412,
+      "rows_after": 412,
+      "unchanged": true
+    },
+    "items": {
+      "rows_before": 80,
+      "rows_after": 80,
+      "unchanged": true
+    },
+    "notifications": {
+      "rows_before": 9,
+      "rows_after": 9,
+      "unchanged": true
+    },
+    "order_items": {
+      "rows_before": 206,
+      "rows_after": 206,
+      "unchanged": true
+    },
+    "orders": {
+      "rows_before": 118,
+      "rows_after": 118,
+      "unchanged": true
+    },
+    "password_reset_events": {
+      "rows_before": 6,
+      "rows_after": 6,
+      "unchanged": true
+    },
+    "password_resets": {
+      "rows_before": 2,
+      "rows_after": 2,
+      "unchanged": true
+    },
+    "payment_change_credits": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true
+    },
+    "payments": {
+      "rows_before": 160,
+      "rows_after": 160,
+      "unchanged": true
+    },
+    "roles": {
+      "rows_before": 3,
+      "rows_after": 3,
+      "unchanged": true
+    },
+    "system_settings": {
+      "rows_before": 31,
+      "rows_after": 31,
+      "unchanged": true
+    },
+    "users": {
+      "rows_before": 6,
+      "rows_after": 6,
+      "unchanged": true
+    }
+  },
+  "stock_unchanged": true,
+  "plan": "C:\\xampp\\htdocs\\KAPEAGOSTO/docs/ingredient_history_plan_20261010_065439.json",
+  "backup": "C:\\xampp\\htdocs\\KAPEAGOSTO\\backups\\kape_agosto_20261010_065440.sql"
+}

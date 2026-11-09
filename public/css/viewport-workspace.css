@@ -1,0 +1,152 @@
+/* Desktop workspaces use the available viewport; activated only for the management shell. */
+@media screen and (min-width: 1101px) and (min-height: 640px) {
+  html.viewport-root, html.viewport-root body.viewport-shell { height: 100%; min-height: 0; overflow: hidden; }
+  html.viewport-root body.viewport-shell > main.content {
+    position: fixed;
+    top: var(--workspace-top, calc(var(--shell-topbar-height) + 12px));
+    right: 14px;
+    bottom: 12px;
+    left: calc(var(--shell-sidebar-width) + 14px);
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 12px;
+    overflow: auto;
+    align-content: start;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: #987665 #f4ede7;
+  }
+  html.viewport-root body.viewport-shell > main.content > * { min-width: 0; }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content > :is([class*="-heading"], .reports-hero, .settings-hero, .manager-settings-hero, .backup-hero, .generate-report-hero) {
+    min-height: 0; margin-bottom: 0; padding: 14px 18px; gap: 16px; border-radius: 10px;
+  }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content.order-page > .order-page-heading {
+    min-height: 118px; padding: 18px 22px; align-items: center;
+  }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content.order-page > .order-page-heading h1 {
+    font-size: clamp(1.75rem, 2.2vw, 2.25rem); line-height: 1.08;
+  }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content.order-page > .order-page-heading .order-breadcrumb {
+    margin-bottom: 7px; font-size: 0.68rem;
+  }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content.order-page > .order-page-heading .order-page-copy {
+    margin-top: 8px; font-size: 0.88rem; line-height: 1.45;
+  }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content > :is([class*="-heading"], .reports-hero, .settings-hero, .manager-settings-hero, .backup-hero, .generate-report-hero) h1 { margin: 0; font-size: clamp(1.45rem, 2vw, 2rem); line-height: 1.1; }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content > :is([class*="-heading"], .reports-hero, .settings-hero, .manager-settings-hero, .backup-hero, .generate-report-hero) [class*="breadcrumb"] { margin: 0 0 5px; font-size: 0.62rem; }
+  html.viewport-root body.viewport-shell:not(.cashier-pos-shell) main.content > :is([class*="-heading"], .reports-hero, .settings-hero, .manager-settings-hero, .backup-hero, .generate-report-hero) > div > p:last-child { margin-top: 5px; font-size: 0.78rem; line-height: 1.35; }
+  /* Preserve the established sidebar size; only constrain its scrolling container. */
+  body.viewport-shell .sidebar { height: 100dvh; overflow: hidden; align-items: stretch; }
+  body.viewport-shell .sidebar-nav { flex: 1 1 0; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #987665 transparent; }
+  body.viewport-shell :is(.sidebar-status, .sidebar-footer-info) { flex: 0 0 auto; }
+
+  /* Fixed controls and pagination surround a flexible record area. */
+  html.viewport-root body.viewport-shell.viewport-fill > main.content { display: flex; flex-direction: column; gap: 10px; overflow: hidden; scrollbar-gutter: auto; }
+  body.viewport-shell.viewport-fill main.content > * { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill :is(.management-list-panel, .customer-history-panels, .customer-history-panel:not([hidden])) { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; gap: 0; overflow: hidden; }
+  body.viewport-shell.viewport-fill .management-table-frame { flex: 1 1 0; min-height: 0; max-height: none; overflow: auto; }
+  body.viewport-shell.viewport-fill :is(.management-pagination, .management-list-filters, .user-panel-header, .category-panel-header, .item-panel-header, .reports-panel-heading) { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill :is(.user-panel-header, .category-panel-header, .item-panel-header, .reports-panel-heading) { padding: 10px 14px; }
+  body.viewport-shell.viewport-fill :is(.user-panel-header, .category-panel-header, .item-panel-header, .reports-panel-heading) h2 { font-size: 1.05rem; }
+  body.viewport-shell.viewport-fill .management-list-filters { padding: 9px 14px; gap: 9px; grid-template-columns: minmax(160px, 2fr) repeat(2, minmax(110px, 1fr)) auto; }
+  body.viewport-shell.viewport-fill .management-search-field { grid-column: auto; }
+  body.viewport-shell.viewport-fill .category-list-filters { grid-template-columns: minmax(160px, 2fr) minmax(160px, 1fr) auto; }
+  body.viewport-shell.viewport-fill .customer-history-filters { grid-template-columns: minmax(160px, 1fr) auto auto; padding: 0; }
+  body.viewport-shell.viewport-fill .customer-history-toolbar { padding: 9px 14px; }
+  body.viewport-shell.viewport-fill .management-list-filters :is(input, select), body.viewport-shell.viewport-fill .management-reset-button { min-height: 36px; padding: 7px 9px; font-size: 0.8rem; }
+  body.viewport-shell.viewport-fill .management-list-filters label > span { font-size: 0.64rem; }
+  body.viewport-shell.viewport-fill .management-pagination { padding: 8px 14px; }
+  body.viewport-shell.viewport-fill.customer-history-page .customer-history-filters .reports-action { min-height: 36px; }
+  body.viewport-shell.viewport-fill.customer-history-page .customer-history-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 5px; }
+  body.viewport-shell.viewport-fill.customer-history-page .customer-history-tab { min-height: 36px; }
+
+  /* Dashboard controls stay still while the selected tab owns its scroll. */
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-tabs { flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; gap: 10px; overflow: hidden; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard :is(.dashboard-kpis, .dashboard-tab-list) { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-kpi { padding: 10px 12px; gap: 4px 8px; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-kpi strong { font-size: 1.3rem; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-tab-panel:not([hidden]) { flex: 1 1 0; min-height: 0; display: block; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-chart-frame { height: clamp(165px, 22vh, 215px); }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-story { padding: 12px 16px; }
+  body.viewport-shell.viewport-fill.kape-pages-dashboard .dashboard-date-card { min-width: 145px; padding: 9px 13px; }
+
+  /* Inventory has one flexible list per tab, including live replacements. */
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-tabs, .inventory-tab-panel:not([hidden]), .inventory-logs-panel, .inventory-void-panel, #inventoryRealtime, #logsRealtime, #voidsRealtime, [data-inventory-list], .inventory-log-view) { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; gap: 8px; overflow: hidden; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-log-table-frame, .inventory-list-table-frame) { flex: 1 1 0; min-height: 0; max-height: none; overflow: auto; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-panel-header, .inventory-log-pagination, .inventory-toolbar, .inventory-alert, .inventory-tab-list, .inventory-list-hint, .inventory-stock-warning) { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-summary-card { min-height: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 10px 12px; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-summary-card .summary-icon { width: 30px; height: 30px; font-size: 0.85rem; margin: 0; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-summary-card .summary-label { margin: 0; font-size: 0.61rem; letter-spacing: 0.04em; line-height: 1.3; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-summary-card strong { margin: 0; font-size: 1.35rem; line-height: 1.2; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-toolbar { flex-wrap: nowrap; gap: 10px; padding: 9px 12px; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-list-filters { flex: 1 1 0; grid-template-columns: minmax(140px, 1.7fr) minmax(120px, 1.5fr) repeat(2, minmax(80px, 1fr)) auto; gap: 8px; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-list-search, .inventory-history-item-field) { grid-column: auto; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(#inventoryVoidFilters, .inventory-history-filters) { grid-template-columns: minmax(150px, 1.5fr) repeat(2, minmax(110px, 1fr)) minmax(95px, 1fr) auto; padding: 8px 12px; gap: 8px; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-list-filters, .inventory-history-filters) label { font-size: 0.64rem; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-list-filters, .inventory-history-filters) :is(input:not([type="hidden"]), select) { min-height: 36px; padding: 7px 9px; font-size: 0.8rem; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-primary-action, .inventory-filter-btn, .inventory-reset-link) { min-height: 36px; padding: 8px 10px; font-size: 0.73rem; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-alert { margin: 0; padding: 8px 12px; font-size: 0.76rem; line-height: 1.35; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-panel-header, .inventory-log-pagination, .inventory-log-pagination) { padding: 8px 12px; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-panel-header h2 { font-size: 1.05rem; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory :is(.inventory-list-hint, .inventory-stock-warning) { padding: 4px 12px; font-size: 0.72rem; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-heading-actions { gap: 6px; flex-wrap: wrap; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory .inventory-heading-actions > * { min-height: 34px; padding: 8px 10px; font-size: 0.7rem; }
+  body.viewport-shell.viewport-fill.kape-inventory-module-inventory #inventory-panel-recipes:not([hidden]) { display: block; overflow: auto; padding-right: 4px; scrollbar-width: thin; }
+
+  /* Register, ticket, queue and payment details remain reachable in their panels. */
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-workspace, body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-workspace { flex: 1 1 0; min-height: 0; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: stretch; overflow: hidden; }
+  body.viewport-shell.viewport-fill.kape-orders-orders :is(.order-new-panel, .order-summary-panel, #checkoutForm, .order-items-panel) { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  body.viewport-shell.viewport-fill.kape-orders-orders :is(#checkoutForm, .order-items-panel) { flex: 1 1 0; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-new-panel > :not(.order-items-panel), body.viewport-shell.viewport-fill.kape-orders-orders #checkoutForm > :not(.summary-table-wrap) { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-items-grid { flex: 1 1 0; min-height: 0; overflow: auto; align-content: start; scrollbar-width: thin; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-items-panel > :not(.order-items-grid) { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-items-panel:not(:has(.order-items-grid)) { overflow: auto; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .summary-table-wrap { flex: 1 1 0; min-height: 0; max-height: none; overflow: auto; scrollbar-width: thin; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-summary-panel { position: static; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-category-tabs { flex-wrap: wrap; overflow: visible; }
+  body.viewport-shell.viewport-fill.kape-orders-orders .order-panel-header { padding: 10px 14px; }
+  body.viewport-shell.viewport-fill.kape-orders-order-list #orders-grid { flex: 1 1 0; min-height: 0; overflow: auto; align-content: start; scrollbar-width: thin; padding-right: 4px; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment :is(.payment-terminal-panel, .payment-side-panel) { min-height: 0; overflow: auto; padding: 14px; scrollbar-width: thin; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-workspace { gap: 12px; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-keypad button { min-height: 44px; font-size: 1rem; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-keypad { gap: 7px; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-metrics { gap: 8px; margin-bottom: 10px; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-metrics > div { padding: 10px; }
+  body.viewport-shell.viewport-fill.kape-payments-order-payment .payment-metrics strong { font-size: 1.3rem; }
+
+  /* Keep Team Forecast controls in view while its inventory cards use one contained scroll area. */
+  body.viewport-shell.viewport-fill .manager-settings-page { display: flex; flex-direction: column; gap: 10px; }
+  body.viewport-shell.viewport-fill .manager-settings-page > * { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill .manager-settings-page > .manager-settings-panel:last-child { display: flex; flex: 1 1 0; flex-direction: column; min-height: 0; gap: 8px; overflow: hidden; padding: 12px 16px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-settings-panel:not(:last-child) { padding: 12px 16px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-panel-heading { align-items: center; margin-bottom: 10px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-panel-heading h2 { font-size: 1.05rem; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-panel-heading p { font-size: 0.76rem; line-height: 1.3; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-target-form { gap: 9px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-target-form :is(input, button) { min-height: 38px; padding: 8px 10px; font-size: 0.8rem; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-table-wrap { min-height: 0; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-table-wrap th,
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-table-wrap td { padding: 8px 12px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-reorder-grid { display: grid; flex: 1 1 0; min-height: 0; overflow: auto; align-content: start; grid-auto-rows: max-content; padding-right: 4px; scrollbar-width: thin; scrollbar-color: #987665 #f4ede7; overscroll-behavior: contain; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-reorder-card { padding: 12px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-reorder-card h3 { font-size: 0.95rem; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-forecast-line { margin: 9px 0; padding: 8px 10px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-reorder-fields { gap: 8px; margin-bottom: 10px; }
+  body.viewport-shell.viewport-fill .manager-settings-page .manager-reorder-fields :is(input, button) { min-height: 36px; padding: 7px 9px; font-size: 0.78rem; }
+
+  /* If alerts/zoom leave too little room, one accessible frame replaces nested scrollers. */
+  body.viewport-shell.viewport-document main.content { gap: 12px; grid-auto-rows: max-content; }
+  body.viewport-shell.viewport-document :is(.management-table-frame, .inventory-log-table-frame, .inventory-list-table-frame, [data-sales-report-history]) { max-height: none; overflow: visible; }
+  body.viewport-shell [data-workspace-scroll]:focus-visible { outline: 2px solid #c9974b; outline-offset: -3px; }
+}
+@media print {
+  html.viewport-root, html.viewport-root body.viewport-shell { height: auto !important; overflow: visible !important; }
+  html.viewport-root body.viewport-shell > main.content { position: static !important; height: auto !important; overflow: visible !important; }
+  html.viewport-root body.viewport-shell :is(.management-table-frame, .inventory-log-table-frame) { height: auto !important; max-height: none !important; overflow: visible !important; }
+}

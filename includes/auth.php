@@ -32,6 +32,7 @@ function login_user(array $user): void {
     ];
     $_SESSION['user_id'] = $user['id'];
     $_SESSION['username'] = $user['username'];
+    unset($_SESSION['account_suspended'], $_SESSION['inactive_user_id'], $_SESSION['account_resume_url']);
     $_SESSION['last_activity'] = time();
 }
 
@@ -41,6 +42,7 @@ function current_user(): ?array {
 
 function normalize_role_name(?string $role): string {
     $role = strtolower(trim((string) $role));
+    $role = preg_replace('/[\\s-]+/', '_', $role) ?? $role;
     return match ($role) {
         'business_admin' => 'admin',
         'staff' => 'cashier',
@@ -62,10 +64,89 @@ function role_display_name(?string $role): string {
     };
 }
 
+function suspend_inactive_user_session(int $userId): void {
+    $_SESSION['flash'] = 'Your account is currently inactive. Please contact an administrator to review your account status.';
+    $_SESSION['flash_type'] = 'inactive';
+    if (($userId ?? 0) > 0) {
+        $_SESSION['inactive_user_id'] = $userId;
+    }
+    $_SESSION['account_suspended'] = true;
+}
+
+function resume_active_user_session(): void {
+    if (!empty($_SESSION['account_suspended']) && ($_SESSION['flash_type'] ?? '') === 'inactive') {
+        unset($_SESSION['flash'], $_SESSION['flash_type']);
+    }
+    unset($_SESSION['account_suspended'], $_SESSION['inactive_user_id'], $_SESSION['account_resume_url']);
+}
+
+function deny_inactive_account(int $userId): void {
+    suspend_inactive_user_session($userId);
+    if (request_expects_json_response()) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'code' => 'account_inactive', 'error' => 'Your account is inactive. Access will resume when an administrator reactivates it.']);
+        exit;
+    }
+
+    // Resume only a viewing page. Never repeat an interrupted payment or other action.
+    $requestPath = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+    $page = basename($requestPath);
+    $resumePages = ['dashboard.php', 'orders.php', 'order_payment.php', 'order_list.php', 'items.php', 'inventory.php', 'users.php', 'categories.php', 'reports.php', 'profile.php', 'maintenance.php', 'view_order.php'];
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && in_array($page, $resumePages, true)) {
+        $query = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY);
+        $_SESSION['account_resume_url'] = $page . ($query !== '' ? '?' . $query : '');
+    }
+    require_once dirname(__DIR__) . '/public/partials/assets.php';
+    header('Location: ' . kape_asset_url('account_paused.php'));
+    exit;
+}
+
 function require_login(): void {
-    if (!current_user()) {
+    $user = current_user();
+    if (!$user) {
         header("Location: login.php");
         exit;
+    }
+
+    $userId = (int) ($user['id'] ?? 0);
+    if ($userId <= 0) {
+        logout_user();
+        header("Location: login.php");
+        exit;
+    }
+
+    static $validatedUserIds = [];
+    if (!isset($validatedUserIds[$userId])) {
+        try {
+            require_once __DIR__ . '/db.php';
+            $statusStmt = db()->prepare('SELECT u.status, u.role_id, r.name AS role_name FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = ? LIMIT 1');
+            $statusStmt->execute([$userId]);
+            $account = $statusStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$account) {
+                logout_user();
+                header("Location: login.php");
+                exit;
+            }
+            if (strtolower(trim((string) $account['status'])) !== 'active') {
+                deny_inactive_account($userId);
+            }
+            $_SESSION['user']['role_id'] = $account['role_id'];
+            $_SESSION['user']['role'] = $account['role_name'] ?? '';
+            resume_active_user_session();
+            $validatedUserIds[$userId] = true;
+        } catch (Throwable $e) {
+            error_log('Account status check failed: ' . $e->getMessage());
+            http_response_code(503);
+            if (request_expects_json_response()) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'error' => 'Unable to confirm your account status. Please try again.']);
+            } else {
+                echo 'Unable to confirm your account status. Please try again.';
+            }
+            exit;
+        }
     }
 
     $_SESSION['last_activity'] = time();

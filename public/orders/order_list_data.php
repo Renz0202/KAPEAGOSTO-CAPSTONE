@@ -9,6 +9,7 @@ require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
 require_once dirname(__DIR__, 2) . '/includes/order_utils.php';
 require_once dirname(__DIR__, 2) . '/includes/payment.php';
+require_once dirname(__DIR__, 2) . '/includes/inventory_requirements.php';
 require_capability('view_order_history');
 
 $pdo = db();
@@ -22,37 +23,6 @@ function order_list_data_status_label(string $status): string {
     return in_array($status, ['void', 'voided'], true) ? 'Voided' : ucfirst($status ?: 'pending');
 }
 
-function order_list_data_inventory_blocked(PDO $pdo): bool {
-    $inventoryCount = (int) $pdo->query('SELECT COUNT(*) FROM inventory')->fetchColumn();
-    if ($inventoryCount === 0) {
-        return true;
-    }
-
-    foreach (['12oz Hot', '16oz', '22oz'] as $size) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE name LIKE '%cup%' AND cup_size = ?");
-        $stmt->execute([$size]);
-        if ((int) $stmt->fetchColumn() === 0) {
-            return true;
-        }
-
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE (name LIKE '%flat lid%' OR name LIKE '%lid cover%' OR name LIKE '%flat cover%' OR name LIKE '%lid%') AND cup_size = ?");
-        $stmt->execute([$size]);
-        if ((int) $stmt->fetchColumn() === 0) {
-            return true;
-        }
-    }
-
-    foreach (['straw', 'stirrer'] as $material) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE name LIKE ?");
-        $stmt->execute(['%' . $material . '%']);
-        if ((int) $stmt->fetchColumn() === 0) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 function order_list_data_code(PDO $pdo, array $order): string {
     $code = trim((string) ($order['order_code'] ?? ''));
     if ($code !== '') {
@@ -61,9 +31,9 @@ function order_list_data_code(PDO $pdo, array $order): string {
     return ensure_order_code($pdo, (int) $order['id']);
 }
 
-$inventoryBlocked = order_list_data_inventory_blocked($pdo);
+
 $stmt = $pdo->prepare("
-    SELECT o.id, o.order_code, o.customer_name AS customer, o.total, o.status, o.created_at,
+    SELECT o.id, o.order_code, o.transaction_no, o.sales_invoice_no, o.service_type, o.customer_name AS customer, o.total, o.status, o.created_at,
            u.username AS generated_username,
            r.name AS generated_role,
            GROUP_CONCAT(CONCAT(i.name, ' (', IFNULL(i.cup_size, '-'), ', Qty: ', oi.qty, ')') SEPARATOR ', ') AS items,
@@ -95,13 +65,19 @@ foreach ($orders as $order) {
     $remaining = max(0, (float) $order['total'] - $paid);
     $isPending = $status === 'pending';
     $isPaid = $remaining <= 0.009;
-    $canComplete = $isPending && !$inventoryBlocked && $isPaid;
+    $itemStmt = $pdo->prepare('SELECT item_id, qty FROM order_items WHERE order_id = ?');
+    $itemStmt->execute([$orderId]);
+    $warnings = inventory_service_stock_warnings($pdo, $itemStmt->fetchAll(PDO::FETCH_ASSOC));
+    $canComplete = $isPending && empty($warnings['blocking']) && !empty($warnings['requirements']) && $isPaid;
     ?>
     <article class="order-card" data-order-id="<?= $orderId ?>" data-order-code="<?= htmlspecialchars($code) ?>">
       <div class="order-card-header">
         <div>
-          <span class="order-code">Order ID: #<?= htmlspecialchars($code) ?></span>
-          <h2><?= htmlspecialchars($order['customer'] ?: 'Walk-in') ?></h2>
+          <span class="order-claim-number">Order No. <?= htmlspecialchars($code) ?></span>
+          <span class="order-code">Transaction Number: <?= htmlspecialchars(order_transaction_number($orderId, $order['transaction_no'])) ?></span>
+          <span class="order-code"><?= htmlspecialchars(order_service_type_label($order['service_type'])) ?></span>
+          <?php if ($order['sales_invoice_no']): ?><span class="order-code">Invoice: <?= htmlspecialchars($order['sales_invoice_no']) ?></span><?php endif; ?>
+          <h2><?= htmlspecialchars(order_customer_display($order['customer'], $order['service_type'])) ?></h2>
         </div>
         <span class="order-status status-<?= htmlspecialchars($statusClass) ?>"><?= htmlspecialchars(order_list_data_status_label($status)) ?></span>
       </div>
@@ -110,12 +86,21 @@ foreach ($orders as $order) {
         <div><dt>Cup Sizes</dt><dd><?= htmlspecialchars($order['cup_sizes'] ?: '-') ?></dd></div>
         <div><dt>Total Qty</dt><dd><?= number_format((int) $order['total_qty']) ?></dd></div>
         <div><dt>Total</dt><dd><?= htmlspecialchars(order_list_data_money($order['total'])) ?></dd></div>
-        <div><dt>Paid</dt><dd><?= htmlspecialchars(order_list_data_money($paid)) ?></dd></div>
+        <div><dt>Amount Paid</dt><dd><?= htmlspecialchars(order_list_data_money($paid)) ?></dd></div>
+        <div><dt>Payment</dt><dd><?= $remaining <= 0.009 ? 'Paid' : ($paid > 0 ? 'Partially Paid' : 'Unpaid') ?></dd></div>
         <div><dt>Order Date</dt><dd><?= htmlspecialchars(date('Y-m-d h:i A', strtotime($order['created_at']))) ?></dd></div>
         <div><dt>Generated By</dt><dd><?= htmlspecialchars(order_generated_by_label($order['generated_username'] ?? null, $order['generated_role'] ?? null)) ?></dd></div>
       </dl>
       <?php if ($isPending && !$isPaid): ?>
         <div class="order-card-note warning">Remaining balance: <strong><?= htmlspecialchars(order_list_data_money($remaining)) ?></strong></div>
+      <?php endif; ?>
+      <?php if ($isPending && !empty($warnings['blocking'])): ?>
+        <div class="order-card-note error">Cannot complete: <?= htmlspecialchars(implode(', ', $warnings['blocking'])) ?></div>
+      <?php endif; ?>
+      <?php if ($isPending && !empty($warnings['requirements'])): ?>
+        <div class="order-card-note neutral"><strong>Materials used when marked Done:</strong>
+          <?= htmlspecialchars(implode('; ', array_map(static fn($material) => $material['name'] . (!empty($material['cup_size']) ? ' (' . $material['cup_size'] . ')' : '') . ' - ' . inventory_service_format_quantity((float) $material['quantity']) . ' ' . $material['unit'], $warnings['requirements']))) ?>
+        </div>
       <?php endif; ?>
       <div class="order-actions">
         <?php if ($isPending): ?>

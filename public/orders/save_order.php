@@ -3,6 +3,7 @@ session_start();
 require_once dirname(__DIR__, 2) . "/includes/db.php";
 require_once dirname(__DIR__, 2) . "/includes/order_utils.php";
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
+require_once dirname(__DIR__, 2) . '/includes/inventory_requirements.php';
 require_capability('process_transactions');
 
 $pdo = db();
@@ -12,16 +13,18 @@ $cart = $_POST['cart'] ?? [];
 
 if (empty($cart)) {
     $_SESSION['flash'] = "⚠ No items selected.";
-    header("Location: manage_order.php");
+    header("Location: orders.php");
     exit;
 }
 
 try {
+    $cart = inventory_service_checkout_lines($pdo, is_array($cart) ? $cart : []);
+    inventory_service_assert_stock($pdo, $cart);
     $pdo->beginTransaction();
 
     // 1. Create order (order_code will be assigned centrally after insert)
     $stmt = $pdo->prepare("INSERT INTO orders (user_id, total, created_at, status) VALUES (?, 0, NOW(), 'pending')");
-    $stmt->execute([$_SESSION['user_id'] ?? null]);
+    $stmt->execute([$_SESSION['user']['id'] ?? null]);
     $order_id = $pdo->lastInsertId();
 
     // Ensure order code is set immediately after creation
@@ -34,14 +37,7 @@ try {
         $item_id = $c['id'];
         $qty = $c['qty'];
 
-        // Fetch item details
-        $item = $pdo->prepare("SELECT name, price, cup_size, image FROM items WHERE id=?");
-        $item->execute([$item_id]);
-        $row = $item->fetch();
-
-        if (!$row) continue;
-
-        $price = $row['price'];
+        $price = $c['price'];
         $subtotal = $price * $qty;
         $total += $subtotal;
 
@@ -56,8 +52,8 @@ try {
 
     $pdo->commit();
     $_SESSION['flash'] = "✅ Order saved!";
-} catch (Exception $e) {
-    $pdo->rollBack();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
     $_SESSION['flash'] = "❌ Error: " . $e->getMessage();
 }
 

@@ -20,11 +20,10 @@
       'auth_login.php','create_user_process.php'
     ],
     'categories' => ['categories.php','edit_category.php','delete_category.php'],
-    // Inventory module plus related reporting/backup pages so parent stays active inside those subpages
+    // Inventory module and related reporting pages.
     'inventory' => [
       'inventory.php','realtime_inventory.php','inventory_warning_data.php','restock.php','deduct.php',
-      'reports.php','view_daily_report.php','generate_daily_report.php',
-      'backup_restore.php','backup_run.php','restore_run.php','backup_status.php','restore_status.php','backup_download.php','backup_list.php'
+      'reports.php','view_daily_report.php','generate_daily_report.php'
     ],
     'items' => ['items.php','add_item.php','edit_item.php','delete_item.php'],
     'orders' => [
@@ -63,24 +62,26 @@
 ?>
 <div class="sidebar-wrapper">
   <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
-    <button type="button" class="sidebar-close js-sidebar-close" aria-label="Close navigation">
-      <i class="fa fa-xmark" aria-hidden="true"></i>
-    </button>
+    <div class="sidebar-header">
+      <a href="dashboard.php" class="sidebar-brand" aria-label="Kape Agosto dashboard">
+        <img
+          class="sidebar-brand-logo sidebar-brand-logo-full"
+          src="<?= htmlspecialchars(kape_asset_url('img/NEWLOGO_WHITE.png')) ?>"
+          alt=""
+          aria-hidden="true"
+        >
+        <img
+          class="sidebar-brand-logo sidebar-brand-logo-cup"
+          src="<?= htmlspecialchars(kape_asset_url('img/CUP_WHITE.png')) ?>"
+          alt=""
+          aria-hidden="true"
+        >
+      </a>
 
-    <a href="dashboard.php" class="sidebar-brand" aria-label="Kape Agosto dashboard">
-      <img
-        class="sidebar-brand-logo sidebar-brand-logo-full"
-        src="<?= htmlspecialchars(kape_asset_url('img/NEWLOGO_WHITE.png')) ?>"
-        alt=""
-        aria-hidden="true"
-      >
-      <img
-        class="sidebar-brand-logo sidebar-brand-logo-cup"
-        src="<?= htmlspecialchars(kape_asset_url('img/CUP_WHITE.png')) ?>"
-        alt=""
-        aria-hidden="true"
-      >
-    </a>
+      <button type="button" class="sidebar-toggle js-sidebar-toggle" aria-label="Collapse sidebar" aria-controls="sidebar" aria-expanded="true">
+        <i class="fa fa-bars" aria-hidden="true"></i>
+      </button>
+    </div>
 
     <nav class="sidebar-nav">
       <div class="nav-section">
@@ -184,5 +185,8 @@
       <p>&copy;  TechTitans2025 | All rights reserved.</p>
     </footer>
   </aside>
+  <button type="button" class="sidebar-edge-toggle js-sidebar-toggle" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+    <i class="fa fa-bars" aria-hidden="true"></i>
+  </button>
   <button type="button" class="sidebar-backdrop js-sidebar-close" aria-label="Close navigation" tabindex="-1"></button>
 </div>

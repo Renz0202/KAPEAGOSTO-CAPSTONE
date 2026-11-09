@@ -1,0 +1,482 @@
+[
+    {
+        "id": 10,
+        "name": "ENERO BRUSKO",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 13,
+        "name": "ENERO BRUSKO",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 14,
+        "name": "ENERO BRUSKO",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 15,
+        "name": "PEBRERO CARAMELO",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 16,
+        "name": "PEBRERO CARAMELO",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 17,
+        "name": "PEBRERO CARAMELO",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 18,
+        "name": "MARSO MACCHIATO",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 19,
+        "name": "MARSO MACCHIATO",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 20,
+        "name": "MARSO MACCHIATO",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 21,
+        "name": "ABRIL VANILLA",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 22,
+        "name": "ABRIL VANILLA",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 23,
+        "name": "ABRIL VANILLA",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 24,
+        "name": "HULYO MATCHA FUSION",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 25,
+        "name": "HULYO MATCHA FUSION",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 26,
+        "name": "HULYO MATCHA FUSION",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 27,
+        "name": "AGOSTO DARK MOCHA",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 28,
+        "name": "AGOSTO DARK MOCHA",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 29,
+        "name": "AGOSTO DARK MOCHA",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 30,
+        "name": "AGOSTO WHITE MOCHA",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 31,
+        "name": "AGOSTO WHITE MOCHA",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 32,
+        "name": "AGOSTO WHITE MOCHA",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 33,
+        "name": "OKTUBRE ESPANYOL",
+        "cup_size": "12oz Hot",
+        "category_id": 15
+    },
+    {
+        "id": 34,
+        "name": "OKTUBRE ESPANYOL",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 35,
+        "name": "OKTUBRE ESPANYOL",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 36,
+        "name": "NOBYEMBRE JELLO",
+        "cup_size": "16oz",
+        "category_id": 15
+    },
+    {
+        "id": 37,
+        "name": "NOBYEMBRE JELLO",
+        "cup_size": "22oz",
+        "category_id": 15
+    },
+    {
+        "id": 38,
+        "name": "MAYO MILO",
+        "cup_size": "12oz Hot",
+        "category_id": 16
+    },
+    {
+        "id": 39,
+        "name": "MAYO MILO",
+        "cup_size": "16oz",
+        "category_id": 16
+    },
+    {
+        "id": 40,
+        "name": "MAYO MILO",
+        "cup_size": "22oz",
+        "category_id": 17
+    },
+    {
+        "id": 44,
+        "name": "SEPTEMBERRIES N' CREAM",
+        "cup_size": "16oz",
+        "category_id": 16
+    },
+    {
+        "id": 45,
+        "name": "SEPTEMBERRIES N' CREAM",
+        "cup_size": "22oz",
+        "category_id": 16
+    },
+    {
+        "id": 47,
+        "name": "HUNYO MATCHA LATTE",
+        "cup_size": "12oz Hot",
+        "category_id": 16
+    },
+    {
+        "id": 48,
+        "name": "HUNYO MATCHA LATTE",
+        "cup_size": "16oz",
+        "category_id": 16
+    },
+    {
+        "id": 49,
+        "name": "HUNYO MATCHA LATTE",
+        "cup_size": "22oz",
+        "category_id": 16
+    },
+    {
+        "id": 50,
+        "name": "DECEMBERRY MATCHA",
+        "cup_size": "16oz",
+        "category_id": 16
+    },
+    {
+        "id": 51,
+        "name": "DECEMBERRY MATCHA",
+        "cup_size": "22oz",
+        "category_id": 16
+    },
+    {
+        "id": 52,
+        "name": "SUMMER UBE LATTE",
+        "cup_size": "12oz Hot",
+        "category_id": 17
+    },
+    {
+        "id": 53,
+        "name": "SUMMER UBE LATTE",
+        "cup_size": "16oz",
+        "category_id": 17
+    },
+    {
+        "id": 54,
+        "name": "SUMMER UBE LATTE",
+        "cup_size": "22oz",
+        "category_id": 17
+    },
+    {
+        "id": 55,
+        "name": "DIRTY SUMMER UBE",
+        "cup_size": "12oz Hot",
+        "category_id": 17
+    },
+    {
+        "id": 56,
+        "name": "DIRTY SUMMER UBE",
+        "cup_size": "16oz",
+        "category_id": 17
+    },
+    {
+        "id": 57,
+        "name": "DIRTY SUMMER UBE",
+        "cup_size": "22oz",
+        "category_id": 17
+    },
+    {
+        "id": 58,
+        "name": "MIDNIGHT MUSCOVADO",
+        "cup_size": "12oz Hot",
+        "category_id": 17
+    },
+    {
+        "id": 59,
+        "name": "MIDNIGHT MUSCOVADO",
+        "cup_size": "16oz",
+        "category_id": 17
+    },
+    {
+        "id": 60,
+        "name": "MIDNIGHT MUSCOVADO",
+        "cup_size": "22oz",
+        "category_id": 17
+    },
+    {
+        "id": 61,
+        "name": "COFFEE CARAMEL",
+        "cup_size": "22oz",
+        "category_id": 18
+    },
+    {
+        "id": 62,
+        "name": "DARK JAVA",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 63,
+        "name": "CHOCO BLANCO",
+        "cup_size": "22oz",
+        "category_id": 18
+    },
+    {
+        "id": 64,
+        "name": "BISCOFFEE",
+        "cup_size": "22oz",
+        "category_id": 18
+    },
+    {
+        "id": 65,
+        "name": "MATCHA LAVA",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 66,
+        "name": "MILOSAUR",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 67,
+        "name": "BISCOFF CARAMEL",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 68,
+        "name": "VANILLA OREO",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 69,
+        "name": "OREO MATCHA",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 70,
+        "name": "STRAWBERRY MILKSHAKE",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 71,
+        "name": "BLUEBERRY CHEESEBAR",
+        "cup_size": "22oz",
+        "category_id": 19
+    },
+    {
+        "id": 72,
+        "name": "WINTER BLUE SODA",
+        "cup_size": "16oz",
+        "category_id": 20
+    },
+    {
+        "id": 73,
+        "name": "WINTER BLUE SODA",
+        "cup_size": "22oz",
+        "category_id": 20
+    },
+    {
+        "id": 74,
+        "name": "SPRING KIWI SODA",
+        "cup_size": "16oz",
+        "category_id": 20
+    },
+    {
+        "id": 75,
+        "name": "SPRING KIWI SODA",
+        "cup_size": "22oz",
+        "category_id": 20
+    },
+    {
+        "id": 76,
+        "name": "SUNNY PASSION SODA",
+        "cup_size": "16oz",
+        "category_id": 20
+    },
+    {
+        "id": 77,
+        "name": "SUNNY PASSION SODA",
+        "cup_size": "22oz",
+        "category_id": 20
+    },
+    {
+        "id": 78,
+        "name": "BERRY SEASON FIZ",
+        "cup_size": "16oz",
+        "category_id": 20
+    },
+    {
+        "id": 79,
+        "name": "BERRY SEASON FIZ",
+        "cup_size": "22oz",
+        "category_id": 20
+    },
+    {
+        "id": 80,
+        "name": "APPLE BOREALIS FIZ",
+        "cup_size": "16oz",
+        "category_id": 20
+    },
+    {
+        "id": 81,
+        "name": "APPLE BOREALIS FIZ",
+        "cup_size": "22oz",
+        "category_id": 20
+    },
+    {
+        "id": 82,
+        "name": "PEACH MIST SPRITZ",
+        "cup_size": "16oz",
+        "category_id": 20
+    },
+    {
+        "id": 83,
+        "name": "PEACH MIST SPRITZ",
+        "cup_size": "22oz",
+        "category_id": 20
+    },
+    {
+        "id": 84,
+        "name": "GREEN APPLE TEA",
+        "cup_size": "16oz",
+        "category_id": 21
+    },
+    {
+        "id": 85,
+        "name": "GREEN APPLE TEA",
+        "cup_size": "22oz",
+        "category_id": 21
+    },
+    {
+        "id": 86,
+        "name": "BLUEBERRY TEA",
+        "cup_size": "16oz",
+        "category_id": 21
+    },
+    {
+        "id": 87,
+        "name": "BLUEBERRY TEA",
+        "cup_size": "22oz",
+        "category_id": 21
+    },
+    {
+        "id": 88,
+        "name": "STRAWBERRY TEA",
+        "cup_size": "16oz",
+        "category_id": 21
+    },
+    {
+        "id": 89,
+        "name": "STRAWBERRY TEA",
+        "cup_size": "22oz",
+        "category_id": 21
+    },
+    {
+        "id": 90,
+        "name": "KIWI FRUIT TEA",
+        "cup_size": "16oz",
+        "category_id": 21
+    },
+    {
+        "id": 91,
+        "name": "KIWI FRUIT TEA",
+        "cup_size": "22oz",
+        "category_id": 21
+    },
+    {
+        "id": 92,
+        "name": "PASSION FRUIT TEA",
+        "cup_size": "16oz",
+        "category_id": 21
+    },
+    {
+        "id": 93,
+        "name": "PASSION FRUIT TEA",
+        "cup_size": "22oz",
+        "category_id": 21
+    },
+    {
+        "id": 94,
+        "name": "HONEY PEACH TEA",
+        "cup_size": "16oz",
+        "category_id": 21
+    },
+    {
+        "id": 95,
+        "name": "HONEY PEACH TEA",
+        "cup_size": "22oz",
+        "category_id": 21
+    }
+]

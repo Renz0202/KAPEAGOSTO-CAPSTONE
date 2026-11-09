@@ -2,6 +2,7 @@
 session_start();
 require_once dirname(__DIR__, 2) . "/includes/db.php";
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
+require_once dirname(__DIR__, 2) . '/includes/inventory_service.php';
 require_admin();
 
 $pdo = db();
@@ -20,20 +21,16 @@ if (!$item) {
     die("Item not found!");
 }
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $qty = (int) $_POST['quantity'];
-
-    if ($qty > 0) {
-        // 1. Update stock
-        $remaining = (float) $item['qty'] + $qty;
-        $pdo->prepare("UPDATE inventory SET qty = ? WHERE id=?")->execute([$remaining, $id]);
-
-        // 2. Insert log
-        $logStmt = $pdo->prepare("INSERT INTO inventory_logs (inventory_id, change_type, quantity, remaining, remarks) VALUES (?, 'restock', ?, ?, 'Manual restock')");
-        $logStmt->execute([$id, $qty, $remaining]);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $pdo->beginTransaction();
+        inventory_service_adjust_stock($pdo, (int) $id, $_POST['quantity'] ?? null, 'restock', (int) ($_SESSION['user']['id'] ?? 0) ?: null, 'Manual restock');
+        $pdo->commit();
+        header('Location: inventory.php?success=1');
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        header('Location: inventory.php?error=1');
     }
-
-    header("Location: inventory.php");
     exit;
 }
 ?>
@@ -54,8 +51,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <div class="form-card">
       <form method="post">
         <div class="form-group">
-          <label>Quantity to Add:</label>
-          <input type="number" name="quantity" min="1" required>
+          <label>Quantity to Add (<?= htmlspecialchars($item['unit']) ?>):</label>
+          <input type="number" name="quantity" step="0.01" min="0.01" required>
         </div>
         <button type="submit">Update Stock</button>
       </form>

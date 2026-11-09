@@ -1,0 +1,68 @@
+/* Sales Reports keeps its controls readable and its history inside one record frame. */
+body.sales-reports-page main.reports-page { min-width: 0; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; align-content: start; gap: 12px; }
+body.sales-reports-page:not(.cashier-pos-shell) main.content > .reports-hero { min-height: 0; margin-bottom: 0; padding: 18px 22px; gap: 18px; border-radius: 12px; }
+body.sales-reports-page:not(.cashier-pos-shell) main.content > .reports-hero h1 { font-size: clamp(1.5rem, 2.5vw, 2.1rem); line-height: 1.12; }
+body.sales-reports-page .reports-hero > div { min-width: 0; }
+body.sales-reports-page .reports-breadcrumb { margin-bottom: 6px; font-size: 0.66rem; }
+body.sales-reports-page .reports-hero p:not(.reports-breadcrumb) { max-width: 80ch; margin-top: 7px; font-size: 0.84rem; }
+body.sales-reports-page .reports-summary-grid { gap: 10px; }
+body.sales-reports-page .reports-summary-card { min-height: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-content: start; align-items: center; gap: 5px 10px; padding: 12px 16px; }
+body.sales-reports-page .reports-card-icon { grid-row: 1 / span 2; width: 32px; height: 32px; border-radius: 8px; }
+body.sales-reports-page .reports-card-label { grid-column: 2; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-size: 0.65rem; line-height: 1.3; letter-spacing: 0.07em; }
+body.sales-reports-page .reports-summary-card strong { grid-column: 2; font-size: 1.3rem; line-height: 1.25; overflow-wrap: anywhere; }
+body.sales-reports-page .reports-toolbar { grid-template-columns: minmax(220px, 1fr) auto; gap: 12px; padding: 10px 16px; }
+body.sales-reports-page .reports-date-form { gap: 5px; }
+body.sales-reports-page .reports-date-form > label, body.sales-reports-page .reports-range-form label span { font-size: 0.65rem; }
+body.sales-reports-page .reports-date-row input, body.sales-reports-page .reports-range-form input { min-width: 0; min-height: 36px; padding: 7px 10px; font-size: 0.83rem; }
+body.sales-reports-page main.reports-page .reports-action { min-height: 36px; padding: 8px 12px; gap: 8px; font-size: 0.73rem; }
+body.sales-reports-page .reports-range-form { grid-template-columns: repeat(2, minmax(140px, 1fr)) auto auto auto; gap: 10px; padding-top: 10px; }
+body.sales-reports-page .reports-panel-heading { padding: 10px 16px; gap: 12px; }
+body.sales-reports-page .reports-panel-heading h2 { font-size: 1.2rem; line-height: 1.2; }
+body.sales-reports-page .reports-selected-grid > div { gap: 6px; padding: 12px 16px; min-width: 0; }
+body.sales-reports-page .reports-selected-grid span { font-size: 0.65rem; letter-spacing: 0.06em; }
+body.sales-reports-page .reports-selected-grid strong { font-size: 1.05rem; line-height: 1.3; overflow-wrap: anywhere; }
+body.sales-reports-page .reports-empty-state, body.sales-reports-page .reports-empty-state.compact { grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; justify-items: start; gap: 5px 12px; padding: 16px; text-align: left; }
+body.sales-reports-page .reports-empty-state > i { grid-column: 1; grid-row: 1 / span 2; width: 44px; height: 44px; font-size: 1.15rem; }
+body.sales-reports-page .reports-empty-state > strong { grid-column: 2; font-size: 1.05rem; }
+body.sales-reports-page .reports-empty-state > span { grid-column: 2; max-width: none; font-size: 0.82rem; }
+body.sales-reports-page .reports-empty-state > .reports-action { grid-column: 3; grid-row: 1 / span 2; }
+body.sales-reports-page .reports-empty-state .reports-action i { display: inline; width: auto; height: auto; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; }
+body.sales-reports-page .reports-table-wrap { min-width: 0; max-width: 100%; max-height: min(480px, 60vh); overflow: auto; scrollbar-width: thin; scrollbar-color: #987665 #f4ede7; }
+body.sales-reports-page .reports-table-wrap:focus-visible { outline: 2px solid #c9974b; outline-offset: -2px; }
+body.sales-reports-page .reports-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 0.83rem; }
+body.sales-reports-page .reports-table :is(th, td) { padding: 9px 12px; white-space: normal; overflow-wrap: anywhere; }
+body.sales-reports-page .reports-table th { position: sticky; top: 0; z-index: 1; font-size: 0.65rem; letter-spacing: 0.06em; }
+body.sales-reports-page .reports-table :is(th, td):nth-child(1) { width: 14%; }
+body.sales-reports-page .reports-table :is(th, td):nth-child(2), body.sales-reports-page .reports-table :is(th, td):nth-child(4) { width: 8%; }
+body.sales-reports-page .reports-table :is(th, td):nth-child(3) { width: 16%; }
+body.sales-reports-page .reports-table :is(th, td):nth-child(5) { width: 18%; }
+body.sales-reports-page .reports-table :is(th, td):nth-child(6) { width: 24%; }
+body.sales-reports-page .reports-table :is(th, td):nth-child(7) { width: 12%; }
+body.sales-reports-page .reports-table td:first-child { display: table-cell; }
+body.sales-reports-page .reports-table td:first-child span { display: block; margin-top: 3px; }
+body.sales-reports-page .reports-row-actions { gap: 6px; }
+body.sales-reports-page .reports-row-actions a { width: 32px; height: 32px; }
+@media screen and (min-width: 1101px) and (min-height: 640px) {
+  body.viewport-shell.viewport-fill.sales-reports-page :is(.reports-hero, .reports-summary-grid, .reports-toolbar, .reports-selected-panel, .reports-notice) { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill.sales-reports-page .reports-table-panel { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
+  body.viewport-shell.viewport-fill.sales-reports-page .reports-table-panel > .reports-panel-heading { flex: 0 0 auto; }
+  body.viewport-shell.viewport-fill.sales-reports-page [data-sales-report-history] { flex: 1 1 0; min-height: 0; max-height: none; overflow: auto; }
+}
+@media (max-width: 760px) {
+  body.sales-reports-page .reports-toolbar { grid-template-columns: minmax(0, 1fr); }
+  body.sales-reports-page .reports-tool-actions { justify-content: flex-start; }
+  body.sales-reports-page .reports-range-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.sales-reports-page .reports-empty-state, body.sales-reports-page .reports-empty-state.compact { grid-template-columns: 44px minmax(0, 1fr); }
+  body.sales-reports-page .reports-empty-state > .reports-action { grid-column: 2; grid-row: 3; margin-top: 7px; }
+  body.sales-reports-page .reports-table-wrap { max-height: none; overflow: visible; padding: 8px 12px; }
+  body.sales-reports-page .reports-table, body.sales-reports-page .reports-table tbody { display: block; }
+  body.sales-reports-page .reports-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  body.sales-reports-page .reports-table tr { display: block; margin-bottom: 10px; border: 1px solid #e3d6cc; border-radius: 8px; background: #fff; padding: 6px 10px; }
+  body.sales-reports-page .reports-table tbody td { display: grid; grid-template-columns: 105px minmax(0, 1fr); width: auto !important; gap: 6px 10px; padding: 7px 0; }
+  body.sales-reports-page .reports-table td::before { content: attr(data-label); grid-column: 1; font-size: 0.67rem; font-weight: 700; color: #7b665d; }
+  body.sales-reports-page .reports-table td > * { grid-column: 2; }
+}
+@media print {
+  body.sales-reports-page .reports-table-wrap { max-height: none; overflow: visible; }
+  body.sales-reports-page .reports-table th { position: static; }
+}

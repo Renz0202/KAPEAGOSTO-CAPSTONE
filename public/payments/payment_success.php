@@ -31,12 +31,12 @@ try {
 
     if ($payment) {
         if ($status === 'paid') {
-            $upd = $pdo->prepare('UPDATE payments SET status = "succeeded", provider_payment_id = ?, receipt_url = ?, raw_response = ?, paid_at = NOW() WHERE id = ?');
             $receiptUrl = is_array($session->receipt_url ?? null) ? null : ($session->receipt_url ?? null);
-            $upd->execute([$paymentIntent, $receiptUrl, json_encode($session), $payment['id']]);
-        } else {
+            $confirmedOrder = transaction_confirm_card($pdo, $sessionId, $paymentIntent, $receiptUrl, json_encode($session));
+            if ($confirmedOrder) $orderId = $confirmedOrder;
+        } elseif ($payment['status'] !== 'succeeded') {
             $upd = $pdo->prepare('UPDATE payments SET status = ?, raw_response = ?, updated_at = NOW() WHERE id = ?');
-            $upd->execute([$status, json_encode($session), $payment['id']]);
+            $upd->execute(['pending', json_encode($session), $payment['id']]);
         }
     }
 

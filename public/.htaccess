@@ -1,6 +1,11 @@
 DirectoryIndex pages/index.php index.html
 RewriteEngine On
 
+# Direct inventory module URLs use the same public routes as sidebar links.
+# THE_REQUEST prevents redirects after Apache internally rewrites a public route.
+RewriteCond %{THE_REQUEST} \s/+([^\s?]*)inventory_module/ [NC]
+RewriteRule ^inventory_module/(inventory|inventory_warning_data|deduct|restock|realtime_inventory|update_order_status)\.php$ /%1$1.php [R=307,L,NE]
+
 RewriteRule ^$ pages/index.php [L,QSA]
 RewriteRule ^legacy_routes/ - [F,L]
 
@@ -12,6 +17,7 @@ RewriteRule ^profile\.php$ pages/profile.php [L,QSA]
 RewriteRule ^notifications\.php$ pages/notifications.php [L,QSA]
 RewriteRule ^maintenance\.php$ pages/maintenance.php [L,QSA]
 RewriteRule ^settings\.php$ settings/settings.php [L,QSA]
+RewriteRule ^ai_settings\.php$ settings/ai_settings.php [L,QSA]
 RewriteRule ^manager_settings\.php$ settings/manager_settings.php [L,QSA]
 
 RewriteRule ^login\.php$ auth/login.php [L,QSA]

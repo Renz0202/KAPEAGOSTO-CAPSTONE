@@ -2,6 +2,7 @@
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
 require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_admin();
+require_once dirname(__DIR__, 2) . '/includes/backup_service.php';
 
 date_default_timezone_set('Asia/Manila');
 
@@ -125,38 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             @ini_set('memory_limit', '512M');
             @set_time_limit(0);
 
-            $dbName = defined('DB_NAME') ? DB_NAME : 'database';
-            $timestamp = date('Ymd_His');
-            $fileBase = $dbName . '_' . $timestamp;
-            $filePath = $backupDir . DIRECTORY_SEPARATOR . $fileBase . '.sql';
-
-            backup_log("Starting backup for DB '{$dbName}' into '{$fileBase}.sql'.");
-            $pdo->exec('SET NAMES utf8mb4');
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-
-            $tables = get_tables($pdo);
-            if (!$tables) throw new RuntimeException('No tables found.');
-
-            $header = "-- Kape Agosto database backup\n";
-            $header .= "-- Database: {$dbName}\n";
-            $header .= "-- Generated at: " . date('c') . "\n";
-            $header .= "SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n";
-            $header .= "SET time_zone='+00:00';\n";
-            $header .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
-            file_put_contents($filePath, $header);
-
-            foreach ($tables as $index => $table) {
-                backup_log('[' . ($index + 1) . '/' . count($tables) . "] Structure: {$table}");
-                file_put_contents($filePath, dump_structure($pdo, $table), FILE_APPEND);
-                backup_log('[' . ($index + 1) . '/' . count($tables) . "] Data: {$table}");
-                file_put_contents($filePath, dump_data($pdo, $table), FILE_APPEND);
-            }
-
-            file_put_contents($filePath, "SET FOREIGN_KEY_CHECKS=1;\n", FILE_APPEND);
-            backup_log("Backup completed: {$fileBase}.sql");
-            $flash_success = 'Backup created: ' . htmlspecialchars(basename($filePath));
+            $result = backup_run($pdo, $backupDir, false);
+            if ($result['status'] === 'busy') throw new RuntimeException('Another backup is already running. Please try again shortly.');
+            $flash_success = 'Backup created: ' . htmlspecialchars($result['file'], ENT_QUOTES, 'UTF-8');
         }
-
         if (isset($_POST['do_restore'])) {
             @ini_set('memory_limit', '512M');
             @set_time_limit(0);
@@ -209,34 +182,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$allowedBackupTabs = ['schedule', 'restore', 'archive', 'logs'];
+$activeBackupTab = isset($_POST['do_restore']) ? 'restore' : (isset($_POST['do_backup']) ? 'archive' : (string) ($_GET['tab'] ?? 'schedule'));
+if (!in_array($activeBackupTab, $allowedBackupTabs, true)) $activeBackupTab = 'schedule';
 $backups = list_backups($backupDir);
 $backupCount = count($backups);
 $latestBackup = $backups[0] ?? null;
 $totalBackupBytes = array_sum(array_map(fn($b) => (int) ($b['size'] ?? 0), $backups));
 
-$markerFile = $backupDir . '/.auto_backup.json';
-$autoLast = null;
-if (is_file($markerFile)) {
-    $marker = json_decode((string) @file_get_contents($markerFile), true);
-    if (is_array($marker) && !empty($marker['last_run'])) {
-        $autoLast = (string) $marker['last_run'];
-    }
-}
-
+require_once dirname(__DIR__, 2) . '/includes/backup_service.php';
+$backupState = backup_read_state($backupDir);
+$autoLast = $backupState['last_success_at'] ?? $backupState['last_run'] ?? null;
 $statusClass = 'none';
-$statusText = 'Not run yet';
-if ($autoLast === date('Y-m-d')) {
-    $statusClass = 'ok';
-    $statusText = 'Completed today';
-} elseif ($autoLast !== null) {
+$statusText = AUTO_BACKUP_ENABLED ? 'Awaiting automatic backup' : 'Disabled';
+if (AUTO_BACKUP_ENABLED && ($backupState['last_attempt_status'] ?? '') === 'failed') {
     $statusClass = 'wait';
-    $statusText = 'Last run: ' . $autoLast;
+    $statusText = 'Last attempt failed';
+} elseif (AUTO_BACKUP_ENABLED && $autoLast) {
+    $statusClass = backup_is_due($backupState, new DateTimeImmutable()) ? 'wait' : 'ok';
+    $statusText = $statusClass === 'ok' ? 'Up to date' : 'Backup overdue';
 }
-
-$threshold = '23:55';
-$nextRun = date('H:i') < $threshold
-    ? date('Y-m-d') . ' ' . $threshold
-    : date('Y-m-d', strtotime('+1 day')) . ' ' . $threshold;
+$now = new DateTimeImmutable();
+$nextScheduled = new DateTimeImmutable($now->format('Y-m-d') . ' ' . AUTO_BACKUP_TIME);
+if ($nextScheduled <= $now || ($backupState['completed_schedule_date'] ?? $backupState['last_run'] ?? '') >= $now->format('Y-m-d')) {
+    $nextScheduled = $nextScheduled->modify('+1 day');
+}
+$nextRun = AUTO_BACKUP_ENABLED ? $nextScheduled->format('Y-m-d H:i') . ' (Philippine time)' : 'Disabled';
+$schedulerFile = $backupDir . '/.scheduler.json';
+$schedulerState = json_decode((string) @file_get_contents($schedulerFile), true);
+$schedulerLabel = is_array($schedulerState) && !empty($schedulerState['registered_at'])
+    ? 'Windows task registered on ' . $schedulerState['registered_at'] . '. Runs while the PC is on, even when the registered Windows user is signed out; missed runs catch up when Windows starts. MySQL must be running.'
+    : 'Windows task registration not confirmed. Page requests provide catch-up backups.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -245,11 +221,17 @@ $nextRun = date('H:i') < $threshold
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kape Agosto | Backup & Restore</title>
     <?php include dirname(__DIR__) . '/partials/stylesheets.php'; ?>
+    <link rel="stylesheet" href="<?= htmlspecialchars(kape_asset_url('css/backup-workspace.css') . '?v=' . filemtime(dirname(__DIR__) . '/css/backup-workspace.css')) ?>">
+    <script src="<?= htmlspecialchars(kape_asset_url('scripts/backup-tabs.js') . '?v=' . filemtime(dirname(__DIR__) . '/scripts/backup-tabs.js')) ?>" defer></script>
     <script>
         function renderLog(el, txt) {
             if (!el) return;
             el.innerHTML = '';
-            const lines = (txt || '').split(/\r?\n/);
+            const lines = (txt || '').split(/\r?\n/)
+                .map((raw, index) => ({ raw, index, timestamp: (raw.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/) || [])[1] || '' }))
+                .filter(entry => entry.raw.trim())
+                .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.index - a.index)
+                .map(entry => entry.raw);
             for (const raw of lines) {
                 if (!raw || !raw.trim()) continue;
                 const match = raw.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*(.*)$/);
@@ -272,7 +254,7 @@ $nextRun = date('H:i') < $threshold
                 line.appendChild(m);
                 el.appendChild(line);
             }
-            el.scrollTop = el.scrollHeight;
+            el.scrollTop = 0;
         }
 
         async function fetchAndRender(url, el) {
@@ -334,10 +316,10 @@ $nextRun = date('H:i') < $threshold
 
             wrapper.style.display = 'block';
             empty.style.display = 'none';
-            let i = 1;
+            let i = list.length;
             tbody.innerHTML = list.map(b => `
                 <tr>
-                    <td>${i++}</td>
+                    <td>${i--}</td>
                     <td>${escapeHtml(b.name)}</td>
                     <td>${kb(b.size)}</td>
                     <td>${escapeHtml(b.time_iso)}</td>
@@ -375,16 +357,12 @@ $nextRun = date('H:i') < $threshold
 <main class="content backup-page">
     <section class="backup-hero">
         <div>
-            <p class="backup-breadcrumb"><?= htmlspecialchars(role_display_name(current_user_role())) ?> <i class="fa fa-chevron-right"></i> Maintenance <i class="fa fa-chevron-right"></i> Backup & Restore</p>
+            <p class="backup-breadcrumb"><?= htmlspecialchars(role_display_name(current_user_role())) ?> <i class="fa fa-chevron-right"></i> <a href="settings.php" style="color:inherit">System Settings</a> <i class="fa fa-chevron-right"></i> Backup &amp; Restore</p>
             <h1>Backup & Restore</h1>
             <p>Create database snapshots, restore protected SQL backups, and monitor system recovery activity from one workspace.</p>
         </div>
         <div class="backup-hero-actions">
-            <form action="" method="post">
-                <input type="hidden" name="do_backup" value="1">
-                <button type="submit" class="backup-action primary"><i class="fa fa-database"></i> Create Backup</button>
-            </form>
-            <a class="backup-action muted" href="reports.php"><i class="fa fa-chart-line"></i> Reports</a>
+            <a class="backup-action muted" href="settings.php"><i class="fa fa-gear"></i> System Settings</a>
         </div>
     </section>
 
@@ -418,7 +396,13 @@ $nextRun = date('H:i') < $threshold
         </article>
     </section>
 
-    <section class="backup-work-grid">
+    <div class="backup-tabs" data-backup-tabs>
+        <nav class="backup-tab-list" role="tablist" aria-label="Backup and restore sections">
+            <?php foreach (['schedule' => 'Schedule', 'restore' => 'Restore Database', 'archive' => 'Available Backups', 'logs' => 'Activity Logs'] as $tabKey => $tabLabel): ?>
+                <a href="?tab=<?= $tabKey ?>" id="backup-tab-<?= $tabKey ?>" class="backup-tab" role="tab" aria-controls="backup-panel-<?= $tabKey ?>" aria-selected="<?= $activeBackupTab === $tabKey ? 'true' : 'false' ?>" tabindex="<?= $activeBackupTab === $tabKey ? '0' : '-1' ?>" data-backup-tab="<?= $tabKey ?>"><?= $tabLabel ?></a>
+            <?php endforeach; ?>
+        </nav>
+        <section class="backup-tab-panel" id="backup-panel-schedule" role="tabpanel" aria-labelledby="backup-tab-schedule" <?= $activeBackupTab !== 'schedule' ? 'hidden' : '' ?>>
         <article class="backup-panel">
             <div class="backup-panel-heading">
                 <div>
@@ -427,22 +411,31 @@ $nextRun = date('H:i') < $threshold
                 </div>
                 <span class="status-pill <?= $statusClass ?>"><?= htmlspecialchars($statusText) ?></span>
             </div>
+            <p class="backup-note"><?= htmlspecialchars($schedulerLabel) ?> MySQL must be running.</p>
+            <?php if (AUTO_BACKUP_ENABLED && backup_is_due($backupState, $now)): ?>
+                <p class="backup-note">A missed scheduled backup is pending. The next Dashboard, Inventory or Orders request will retry it.</p>
+            <?php endif; ?>
+            <?php if (($backupState['last_attempt_status'] ?? '') === 'failed'): ?>
+                <p class="backup-note">Last attempt: <?= htmlspecialchars($backupState['last_attempt_at'] ?? 'Unknown') ?>. <?= htmlspecialchars($backupState['last_error'] ?? 'Check the backup log.') ?></p>
+            <?php endif; ?>
             <div class="backup-status-list">
                 <div>
                     <span>Last Auto Backup</span>
                     <strong><?= $autoLast ? htmlspecialchars($autoLast) : 'Not available' ?></strong>
                 </div>
                 <div>
-                    <span>Next Expected Run</span>
+                    <span>Next Scheduled Time</span>
                     <strong><?= htmlspecialchars($nextRun) ?></strong>
                 </div>
                 <div>
                     <span>Retention</span>
-                    <strong>14 days</strong>
+                    <strong><?= (int) AUTO_BACKUP_KEEP_DAYS ?> days for automatic files; manual backups retained</strong>
                 </div>
             </div>
         </article>
 
+        </section>
+        <section class="backup-tab-panel" id="backup-panel-restore" role="tabpanel" aria-labelledby="backup-tab-restore" <?= $activeBackupTab !== 'restore' ? 'hidden' : '' ?>>
         <article class="backup-panel danger">
             <div class="backup-panel-heading">
                 <div>
@@ -472,13 +465,20 @@ $nextRun = date('H:i') < $threshold
         </article>
     </section>
 
-    <section class="backup-panel">
+    <section class="backup-tab-panel" id="backup-panel-archive" role="tabpanel" aria-labelledby="backup-tab-archive" <?= $activeBackupTab !== 'archive' ? 'hidden' : '' ?>>
+    <article class="backup-panel">
         <div class="backup-panel-heading">
             <div>
                 <span class="backup-eyebrow">Archive</span>
                 <h2>Available Backups</h2>
             </div>
-            <span id="backupCountPill" class="backup-count-pill"><?= (int) $backupCount ?> files</span>
+            <div class="backup-archive-actions">
+                <span id="backupCountPill" class="backup-count-pill"><?= (int) $backupCount ?> files</span>
+                <form action="" method="post">
+                    <input type="hidden" name="do_backup" value="1">
+                    <button type="submit" class="backup-action muted small"><i class="fa fa-plus" aria-hidden="true"></i> Create Backup</button>
+                </form>
+            </div>
         </div>
         <div id="noBackupsAlert" class="backup-empty" style="display: <?= empty($backups) ? 'grid' : 'none' ?>;">
             <i class="fa fa-folder-open"></i>
@@ -497,9 +497,9 @@ $nextRun = date('H:i') < $threshold
                     </tr>
                 </thead>
                 <tbody id="backupsTbody">
-                    <?php $i = 1; foreach ($backups as $backup): ?>
+                    <?php $i = count($backups); foreach ($backups as $backup): ?>
                         <tr>
-                            <td><?= $i++ ?></td>
+                            <td><?= $i-- ?></td>
                             <td><?= htmlspecialchars($backup['name']) ?></td>
                             <td><?= htmlspecialchars(format_backup_size((int) $backup['size'])) ?></td>
                             <td><?= date('M d, Y g:i A', $backup['time']) ?></td>
@@ -509,9 +509,11 @@ $nextRun = date('H:i') < $threshold
                 </tbody>
             </table>
         </div>
+    </article>
     </section>
 
-    <section class="backup-panel">
+    <section class="backup-tab-panel" id="backup-panel-logs" role="tabpanel" aria-labelledby="backup-tab-logs" <?= $activeBackupTab !== 'logs' ? 'hidden' : '' ?>>
+    <article class="backup-panel">
         <div class="backup-panel-heading">
             <div>
                 <span class="backup-eyebrow">Activity</span>
@@ -534,7 +536,9 @@ $nextRun = date('H:i') < $threshold
                 <div id="restoreLog" class="log-box"></div>
             </div>
         </div>
+    </article>
     </section>
+    </div>
 </main>
 
 <?php include dirname(__DIR__) . '/partials/admin_footer.php'; ?>

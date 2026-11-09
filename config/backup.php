@@ -3,17 +3,17 @@
 // Optional overrides for automatic backup/restore behavior.
 // You can safely delete or ignore this file; sensible defaults apply when not present.
 
-// Enable/disable the passive auto-backup that runs near end-of-day when pages are visited
+// Enable scheduled backups and page-request catch-up for missed scheduled dates.
 if (!defined('AUTO_BACKUP_ENABLED')) {
     define('AUTO_BACKUP_ENABLED', true);
 }
 
-// End-of-day time (24h HH:MM) to trigger the backup when there is traffic
+// Daily time in Philippine time. Re-run scripts/register_backup_task.ps1 after changing.
 if (!defined('AUTO_BACKUP_TIME')) {
     define('AUTO_BACKUP_TIME', '23:55');
 }
 
-// How many days of .sql backups to keep in /backups
+// Retain service-owned auto_*.sql files this many days. Manual/legacy files are preserved.
 if (!defined('AUTO_BACKUP_KEEP_DAYS')) {
     define('AUTO_BACKUP_KEEP_DAYS', 14);
 }

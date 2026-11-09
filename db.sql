@@ -38,6 +38,16 @@ CREATE TABLE IF NOT EXISTS users (
   CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+-- Per-account welcome guide preferences (new accounts have no row until dismissed).
+CREATE TABLE IF NOT EXISTS user_guide_progress (
+  user_id INT NOT NULL PRIMARY KEY,
+  welcome_status ENUM('completed','skipped','existing') NOT NULL,
+  guide_version SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_guide_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =========================
 -- MENU CATEGORIES
 -- =========================
@@ -93,6 +103,18 @@ CREATE TABLE IF NOT EXISTS orders (
   service_details TEXT DEFAULT NULL,
   job_status ENUM('queued','in_progress','ready','completed','cancelled') NOT NULL DEFAULT 'queued',
   total DECIMAL(10,2) NOT NULL DEFAULT 0,
+  subtotal DECIMAL(10,2) NOT NULL DEFAULT 0,
+  discount_type ENUM('none','promo','senior','pwd') NOT NULL DEFAULT 'none',
+  discount_rate DECIMAL(5,2) NOT NULL DEFAULT 0,
+  promo_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  vat_exempt_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  discount_beneficiary_type ENUM('senior','pwd') DEFAULT NULL,
+  discount_customer_name VARCHAR(100) DEFAULT NULL,
+  discount_customer_tin VARCHAR(32) DEFAULT NULL,
+  discount_id_number VARCHAR(64) DEFAULT NULL,
+  discount_applied_by INT DEFAULT NULL,
+  exclusive_use_confirmed TINYINT(1) NOT NULL DEFAULT 0,
   -- include 'voided' to match application queries; keep 'void' for compatibility
   status ENUM('pending','completed','cancelled','void','voided') NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -132,9 +154,13 @@ CREATE TABLE IF NOT EXISTS inventory (
   id INT AUTO_INCREMENT PRIMARY KEY,
   sku VARCHAR(64) NOT NULL,
   name VARCHAR(100) NOT NULL,
+  material_type ENUM('raw_material','packaging','other') NOT NULL DEFAULT 'raw_material',
+  material_group VARCHAR(40) DEFAULT NULL,
   cup_size VARCHAR(50) DEFAULT NULL,
   unit VARCHAR(50) DEFAULT 'pcs',
   qty DECIMAL(10,2) NOT NULL DEFAULT 0,
+  unit_cost DECIMAL(10,2) DEFAULT NULL,
+  unit_cost_source ENUM('estimate','verified') DEFAULT NULL,
   critical_level DECIMAL(10,2) DEFAULT NULL,
   safety_stock DECIMAL(10,2) NOT NULL DEFAULT 0,
   lead_time_days INT NOT NULL DEFAULT 1,
@@ -142,7 +168,8 @@ CREATE TABLE IF NOT EXISTS inventory (
   date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_inventory_sku (sku),
-  INDEX idx_inventory_name_size (name, cup_size)
+  INDEX idx_inventory_name_size (name, cup_size),
+  INDEX idx_inventory_material_group (material_group)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =========================
@@ -160,8 +187,17 @@ CREATE TABLE IF NOT EXISTS item_requirements (
   CONSTRAINT fk_requirements_inventory FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Generated recipes stay identifiable until an administrator saves their own amounts.
+CREATE TABLE IF NOT EXISTS item_recipe_metadata (
+  item_id INT NOT NULL PRIMARY KEY,
+  source ENUM('generated','custom') NOT NULL DEFAULT 'custom',
+  notes VARCHAR(500) NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_recipe_metadata_item FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =========================
--- INVENTORY LOGS (record usage, restock, damage)
+-- INVENTORY LOGS (record usage, restock, damage, and spoilage)
 -- =========================
 CREATE TABLE IF NOT EXISTS inventory_logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -169,9 +205,12 @@ CREATE TABLE IF NOT EXISTS inventory_logs (
   order_id INT DEFAULT NULL,
   user_id INT DEFAULT NULL,
   -- accept both new ('added','used') and legacy ('restock','deduct') values
-  change_type ENUM('added','restock','used','deduct','auto-deduct','damage','adjustment') NOT NULL,
+  change_type ENUM('added','restock','used','deduct','auto-deduct','damage','spoilage','adjustment') NOT NULL,
   quantity DECIMAL(10,2) NOT NULL,
   remaining DECIMAL(10,2) NOT NULL DEFAULT 0,
+  loss_unit_cost DECIMAL(10,2) DEFAULT NULL,
+  loss_value DECIMAL(18,2) DEFAULT NULL,
+  loss_cost_source ENUM('estimate','verified') DEFAULT NULL,
   remarks VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_inventory_logs_inv_date (inventory_id, created_at),

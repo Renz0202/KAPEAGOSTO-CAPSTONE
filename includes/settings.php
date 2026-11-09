@@ -4,6 +4,11 @@ function settings_defaults(): array
 {
     return [
         'business_name' => 'Kape Agosto',
+        'owner_name' => '',
+        'bir_registered_name' => '',
+        'bir_tax_type' => '',
+        'bir_tin' => '',
+        'bir_branch_code' => '',
         'business_tagline' => 'Coffee Shop',
         'business_address' => '1157 R. Papa St. Corner F. Aguilar St. Barrio Obrero, Tondo, Manila, PH',
         'business_phone' => '0915-292-6848',
@@ -27,12 +32,15 @@ function settings_defaults(): array
         'smtp_reply_to' => '',
         'ai_enabled' => '0',
         'ai_provider' => 'openai',
-        'ai_model' => 'gpt-4o-mini',
+        'ai_model' => '',
         'ai_api_key' => '',
         'sales_target_daily' => '0',
         'sales_target_weekly' => '0',
         'sales_target_monthly' => '0',
         'performance_period_days' => '30',
+        'promo_discount_percent' => '0',
+        'promo_discount_start_date' => '',
+        'promo_discount_end_date' => '',
     ];
 }
 
@@ -54,8 +62,11 @@ function settings_save_manager_targets(PDO $pdo, array $values): void
     ");
 
     foreach ($allowed as $key => [$minimum, $maximum]) {
-        if (!isset($values[$key]) || !is_numeric($values[$key])) {
-            throw new InvalidArgumentException('All performance target values must be numeric.');
+        if (!array_key_exists($key, $values)) {
+            continue;
+        }
+        if (!is_numeric($values[$key])) {
+            throw new InvalidArgumentException('Performance target values must be numeric.');
         }
         $number = (float) $values[$key];
         if ($number < $minimum || $number > $maximum) {
@@ -64,6 +75,66 @@ function settings_save_manager_targets(PDO $pdo, array $values): void
         $stored = $key === 'performance_period_days' ? (string) (int) $number : number_format($number, 2, '.', '');
         $stmt->execute([$key, $stored]);
     }
+}
+
+function settings_normalize_promo_values(array $values): array
+{
+    $percent = $values['promo_discount_percent'] ?? '0';
+    if (!is_numeric($percent) || !is_finite((float) $percent) || (float) $percent < 0 || (float) $percent > 100) {
+        throw new InvalidArgumentException('Promotional discount must be a percentage from 0 to 100.');
+    }
+
+    $startDate = trim((string) ($values['promo_discount_start_date'] ?? ''));
+    $endDate = trim((string) ($values['promo_discount_end_date'] ?? ''));
+    foreach (['start' => $startDate, 'end' => $endDate] as $label => $date) {
+        if ($date === '') continue;
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (!$parsed || $parsed->format('Y-m-d') !== $date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+            throw new InvalidArgumentException('Enter valid promo start and end dates.');
+        }
+    }
+    if (($startDate === '') !== ($endDate === '')) {
+        throw new InvalidArgumentException('Enter both promo start and end dates, or leave both blank.');
+    }
+    if ($startDate !== '' && $startDate > $endDate) {
+        throw new InvalidArgumentException('Promo start date must be on or before its end date.');
+    }
+
+    return [
+        'promo_discount_percent' => number_format((float) $percent, 2, '.', ''),
+        'promo_discount_start_date' => $startDate,
+        'promo_discount_end_date' => $endDate,
+    ];
+}
+
+function settings_save_promo(PDO $pdo, array $values): void
+{
+    settings_ensure_schema($pdo);
+    $normalized = settings_normalize_promo_values(array_replace(settings_all($pdo), $values));
+    $stmt = $pdo->prepare("INSERT INTO system_settings (setting_key, setting_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()");
+    foreach ($normalized as $key => $value) {
+        $stmt->execute([$key, $value]);
+    }
+}
+
+function settings_promo_is_active(array $settings): bool
+{
+    $percent = (float) ($settings['promo_discount_percent'] ?? 0);
+    if (!is_finite($percent) || $percent <= 0) return false;
+
+    $startDate = trim((string) ($settings['promo_discount_start_date'] ?? ''));
+    $endDate = trim((string) ($settings['promo_discount_end_date'] ?? ''));
+    if ($startDate === '' && $endDate === '') return true;
+    if ($startDate === '' || $endDate === '' || $startDate > $endDate) return false;
+
+    try {
+        $timezone = new DateTimeZone((string) ($settings['timezone'] ?? 'Asia/Manila'));
+    } catch (Throwable $e) {
+        $timezone = new DateTimeZone('Asia/Manila');
+    }
+    $today = (new DateTimeImmutable('now', $timezone))->format('Y-m-d');
+    return $today >= $startDate && $today <= $endDate;
 }
 
 function settings_ensure_schema(PDO $pdo): void
@@ -124,6 +195,14 @@ function settings_save(PDO $pdo, array $values): void
 
     $values = settings_normalize_smtp_values($values);
     $currentSettings = settings_all($pdo);
+    if (array_key_exists('ai_provider', $values) && ($values['ai_provider'] ?? '') !== $currentSettings['ai_provider'] && trim((string) ($values['ai_api_key'] ?? '')) === '' && ($values['clear_ai_api_key'] ?? '0') !== '1') {
+        throw new InvalidArgumentException('Enter the matching API key when switching AI providers.');
+    }
+    if (($values['ai_automatic_model'] ?? '0') === '1') $values['ai_model'] = '';
+    if (array_intersect(['promo_discount_percent', 'promo_discount_start_date', 'promo_discount_end_date'], array_keys($values))) {
+        $promoValues = settings_normalize_promo_values(array_replace($currentSettings, $values));
+        $values = array_replace($values, $promoValues);
+    }
     if (
         (string) ($values['clear_smtp_password'] ?? '0') !== '1'
         && trim((string) ($values['smtp_password'] ?? '')) === ''
@@ -140,6 +219,12 @@ function settings_save(PDO $pdo, array $values): void
     }
     settings_validate_smtp_values($values);
     settings_validate_ai_values($values);
+    $birValues = settings_normalize_bir_values(array_replace($currentSettings, $values));
+    foreach (['bir_registered_name', 'bir_tax_type', 'bir_tin', 'bir_branch_code'] as $birKey) {
+        if (array_key_exists($birKey, $values)) {
+            $values[$birKey] = $birValues[$birKey];
+        }
+    }
     $defaults = settings_defaults();
     $clearSmtpPassword = (string) ($values['clear_smtp_password'] ?? '0') === '1';
     $clearAiApiKey = (string) ($values['clear_ai_api_key'] ?? '0') === '1';
@@ -155,6 +240,12 @@ function settings_save(PDO $pdo, array $values): void
         }
 
         $value = trim((string) $values[$key]);
+        if ($key === 'owner_name') {
+            $ownerNameLength = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+            if ($ownerNameLength > 150) {
+                throw new InvalidArgumentException('Owner name must be 150 characters or fewer.');
+            }
+        }
         if ($key === 'smtp_password' && $clearSmtpPassword) {
             $stmt->execute([$key, '']);
             continue;
@@ -219,6 +310,51 @@ function settings_save(PDO $pdo, array $values): void
     }
 }
 
+function settings_normalize_bir_values(array $values): array
+{
+    $name = trim((string) ($values['bir_registered_name'] ?? ''));
+    $type = trim((string) ($values['bir_tax_type'] ?? ''));
+    $tin = trim((string) ($values['bir_tin'] ?? ''));
+    $branch = trim((string) ($values['bir_branch_code'] ?? ''));
+    if (strlen($name) > 250) {
+        throw new InvalidArgumentException('BIR registered name must be 250 bytes or fewer.');
+    }
+    if (!in_array($type, ['', 'vat', 'non_vat'], true)) {
+        throw new InvalidArgumentException('Select VAT or NON-VAT as shown on your BIR certificate.');
+    }
+    if ($tin !== '' && !preg_match('/^(?:[0-9]{9}|[0-9]{3}-[0-9]{3}-[0-9]{3})$/D', $tin)) {
+        throw new InvalidArgumentException('Enter a 9-digit TIN, such as 123-456-789. Enter the branch code separately.');
+    }
+    if ($branch !== '' && !preg_match('/^[0-9]{3,5}$/D', $branch)) {
+        throw new InvalidArgumentException('Branch code must contain 3 to 5 digits, including leading zeros.');
+    }
+    if (($type !== '' && $tin === '') || ($tin !== '' && $type === '') || ($branch !== '' && $tin === '')) {
+        throw new InvalidArgumentException('Enter both the BIR tax type and TIN, or leave both blank if not yet configured.');
+    }
+    $digits = str_replace('-', '', $tin);
+    return [
+        'bir_registered_name' => $name,
+        'bir_tax_type' => $type,
+        'bir_tin' => $digits === '' ? '' : substr($digits, 0, 3) . '-' . substr($digits, 3, 3) . '-' . substr($digits, 6, 3),
+        'bir_branch_code' => $branch,
+    ];
+}
+
+function settings_save_ai(PDO $pdo, array $values): void
+{
+    $allowedKeys = [
+        'ai_enabled',
+        'ai_provider',
+        'ai_model',
+        'ai_api_key',
+        'clear_ai_api_key',
+        'ai_automatic_model',
+    ];
+
+    $aiValues = array_intersect_key($values, array_flip($allowedKeys));
+    settings_save($pdo, $aiValues);
+}
+
 function settings_value(array $settings, string $key): string
 {
     $defaults = settings_defaults();
@@ -247,6 +383,7 @@ function settings_ai_provider_options(): array
 {
     return [
         'openai',
+        'gemini',
     ];
 }
 
@@ -375,7 +512,7 @@ function settings_validate_ai_values(array $values): void
     $apiKey = trim((string) ($values['ai_api_key'] ?? ''));
 
     if (!in_array($provider, settings_ai_provider_options(), true)) {
-        throw new InvalidArgumentException('AI provider must be OpenAI.');
+        throw new InvalidArgumentException('AI provider must be OpenAI or Gemini.');
     }
 
     if (strlen($model) > 120) {

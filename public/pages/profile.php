@@ -214,10 +214,14 @@ $registeredLabel = $registeredAt ? date('M d, Y', strtotime($registeredAt)) : 'R
 
   <section class="profile-panel">
     <aside class="profile-aside">
-      <div class="profile-preview">
-        <i id="defaultIcon" class="fa fa-user-circle is-hidden"></i>
-        <img id="preview" src="<?= htmlspecialchars($previewSrc) ?>" alt="<?= htmlspecialchars($displayName) ?> profile photo" class="is-visible">
-      </div>
+      <button type="button" class="profile-avatar-picker" id="profileAvatarPicker" aria-label="Choose a new profile photo" title="Change profile photo">
+        <span class="profile-preview">
+          <i id="defaultIcon" class="fa fa-user-circle is-hidden"></i>
+          <img id="preview" src="<?= htmlspecialchars($previewSrc) ?>" alt="<?= htmlspecialchars($displayName) ?> profile photo" class="is-visible">
+        </span>
+        <span class="profile-avatar-badge" aria-hidden="true"><i class="fa fa-camera"></i></span>
+      </button>
+      <small class="profile-avatar-hint">Click the photo to replace it</small>
       <h2><?= htmlspecialchars($displayName) ?></h2>
       <p><?= htmlspecialchars($email ?: 'No email set') ?></p>
       <div class="profile-chip-row">
@@ -237,10 +241,7 @@ $registeredLabel = $registeredAt ? date('M d, Y', strtotime($registeredAt)) : 'R
     </aside>
 
     <form method="post" enctype="multipart/form-data" class="profile-form-modern">
-      <div class="form-group full">
-        <label for="image"><i class="fa fa-image"></i> Profile Image</label>
-        <input id="image" type="file" name="image" accept="image/*" onchange="previewImage(event)">
-      </div>
+      <input id="image" class="profile-avatar-input" type="file" name="image" accept="image/*" tabindex="-1" aria-hidden="true">
 
       <div class="form-group">
         <label for="username"><i class="fa fa-user"></i> Username</label>
@@ -298,22 +299,38 @@ $registeredLabel = $registeredAt ? date('M d, Y', strtotime($registeredAt)) : 'R
 <?php include dirname(__DIR__) . '/partials/admin_footer.php'; ?>
 
 <script>
-function previewImage(event) {
-  const file = event.target.files[0];
+(function () {
+  const picker = document.getElementById('profileAvatarPicker');
+  const imageInput = document.getElementById('image');
   const preview = document.getElementById('preview');
   const defaultIcon = document.getElementById('defaultIcon');
+  const currentAvatar = preview?.getAttribute('src') || 'img/CUP_BLACK.png';
+  let previewUrl = '';
 
-  if (file) {
-    preview.src = URL.createObjectURL(file);
+  picker?.addEventListener('click', function () {
+    imageInput?.click();
+  });
+
+  imageInput?.addEventListener('change', function () {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = '';
+    }
+
+    const file = imageInput.files?.[0];
+    if (!file) {
+      preview.src = currentAvatar;
+      preview.classList.add('is-visible');
+      defaultIcon?.classList.add('is-hidden');
+      return;
+    }
+
+    previewUrl = URL.createObjectURL(file);
+    preview.src = previewUrl;
     preview.classList.add('is-visible');
-    defaultIcon.classList.add('is-hidden');
-    return;
-  }
-
-  preview.removeAttribute('src');
-  preview.classList.remove('is-visible');
-  defaultIcon.classList.remove('is-hidden');
-}
+    defaultIcon?.classList.add('is-hidden');
+  });
+})();
 
 document.querySelectorAll('[data-auto-capitalize-name]').forEach((input) => {
   input.addEventListener('blur', () => {

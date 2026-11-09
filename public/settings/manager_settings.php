@@ -1,97 +1,71 @@
 <?php
 require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
+require_once dirname(__DIR__, 2) . '/includes/analytics.php';
+require_once dirname(__DIR__, 2) . '/includes/manager_forecast.php';
 require_once dirname(__DIR__, 2) . '/includes/settings.php';
-
 require_capability('manage_reorder_settings');
-
 $pdo = db();
-$flash = '';
-$flashType = 'success';
-
-if (empty($_SESSION['manager_settings_csrf'])) {
-    $_SESSION['manager_settings_csrf'] = bin2hex(random_bytes(32));
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$settings = settings_all($pdo);
+$promoSettingsFlash = '';
+$promoSettingsFlashType = 'success';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_promo_discount'])) {
     try {
-        if (!hash_equals($_SESSION['manager_settings_csrf'], (string) ($_POST['csrf_token'] ?? ''))) {
-            throw new RuntimeException('Your session token expired. Please reload the page and try again.');
-        }
-
-        $action = (string) ($_POST['action'] ?? '');
-        if ($action === 'save_targets') {
-            settings_save_manager_targets($pdo, $_POST);
-            $flash = 'Sales-team performance targets updated successfully.';
-        } elseif ($action === 'save_reorder') {
-            $inventoryId = (int) ($_POST['inventory_id'] ?? 0);
-            $criticalLevel = filter_var($_POST['critical_level'] ?? null, FILTER_VALIDATE_FLOAT);
-            $safetyStock = filter_var($_POST['safety_stock'] ?? null, FILTER_VALIDATE_FLOAT);
-            $leadTimeDays = filter_var($_POST['lead_time_days'] ?? null, FILTER_VALIDATE_INT);
-            $targetStock = filter_var($_POST['target_stock'] ?? null, FILTER_VALIDATE_FLOAT);
-
-            if ($inventoryId <= 0 || $criticalLevel === false || $safetyStock === false || $leadTimeDays === false || $targetStock === false) {
-                throw new InvalidArgumentException('Enter valid numeric reorder values.');
-            }
-            if ($criticalLevel < 0 || $safetyStock < 0 || $leadTimeDays < 1 || $leadTimeDays > 365 || $targetStock < $criticalLevel) {
-                throw new InvalidArgumentException('Target stock must be at least the reorder point, and all values must be within their allowed ranges.');
-            }
-
-            $stmt = $pdo->prepare('UPDATE inventory SET critical_level = ?, safety_stock = ?, lead_time_days = ?, target_stock = ? WHERE id = ?');
-            $stmt->execute([$criticalLevel, $safetyStock, $leadTimeDays, $targetStock, $inventoryId]);
-            if ($stmt->rowCount() === 0) {
-                $exists = $pdo->prepare('SELECT COUNT(*) FROM inventory WHERE id = ?');
-                $exists->execute([$inventoryId]);
-                if (!(int) $exists->fetchColumn()) {
-                    throw new RuntimeException('The selected inventory item no longer exists.');
-                }
-            }
-            $flash = 'Reorder parameters updated successfully.';
-        } else {
-            throw new InvalidArgumentException('Unknown settings action.');
-        }
+        settings_save_promo($pdo, [
+            'promo_discount_percent' => $_POST['promo_discount_percent'] ?? null,
+            'promo_discount_start_date' => $_POST['promo_discount_start_date'] ?? '',
+            'promo_discount_end_date' => $_POST['promo_discount_end_date'] ?? '',
+        ]);
+        $settings = settings_all($pdo);
+        $promoSettingsFlash = 'Promotional discount rate updated. Cashiers can now apply this rate on POS tickets.';
+    } catch (InvalidArgumentException $e) {
+        $promoSettingsFlash = $e->getMessage();
+        $promoSettingsFlashType = 'error';
     } catch (Throwable $e) {
-        $flash = $e->getMessage();
-        $flashType = 'error';
+        error_log('Promotional discount setting save failed: ' . $e->getMessage());
+        $promoSettingsFlash = 'Promotional discount rate could not be saved. Please try again.';
+        $promoSettingsFlashType = 'error';
     }
 }
-
-$settings = settings_all($pdo);
-$inventory = $pdo->query("
-    SELECT i.id, i.name, i.cup_size, i.unit, i.qty, i.critical_level,
-           i.safety_stock, i.lead_time_days, i.target_stock,
-           COALESCE(SUM(CASE WHEN il.change_type IN ('used','deduct','auto-deduct','damage')
-                       AND il.created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
-                       THEN il.quantity ELSE 0 END), 0) AS used_14
-    FROM inventory i
-    LEFT JOIN inventory_logs il ON il.inventory_id = i.id
-    GROUP BY i.id, i.name, i.cup_size, i.unit, i.qty, i.critical_level, i.safety_stock, i.lead_time_days, i.target_stock
-    ORDER BY i.name, i.cup_size
-")->fetchAll(PDO::FETCH_ASSOC);
-
-$periodDays = max(1, (int) settings_value($settings, 'performance_period_days'));
-$teamStmt = $pdo->prepare("
-    SELECT u.username, u.full_name, r.name AS role_name,
-           COUNT(DISTINCT o.id) AS completed_orders,
-           COALESCE(SUM(o.total), 0) AS total_sales
-    FROM users u
-    JOIN roles r ON r.id = u.role_id
-    LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'completed'
-      AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-    WHERE LOWER(r.name) IN ('cashier', 'staff') AND u.status = 'active'
-    GROUP BY u.id, u.username, u.full_name, r.name
-    ORDER BY total_sales DESC
-");
-$teamStmt->execute([$periodDays - 1]);
-$teamPerformance = $teamStmt->fetchAll(PDO::FETCH_ASSOC);
-$periodTarget = $periodDays <= 1
-    ? (float) settings_value($settings, 'sales_target_daily')
-    : ($periodDays <= 7
-        ? (float) settings_value($settings, 'sales_target_weekly')
-        : (float) settings_value($settings, 'sales_target_monthly') * ($periodDays / 30));
-
 function manager_money($value): string { return 'PHP ' . number_format((float) $value, 2); }
 function manager_number($value): string { return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.'); }
+function manager_forecast_inventory(PDO $pdo): array {
+    return $pdo->query("
+        SELECT i.id, i.name, i.cup_size, i.unit, i.qty, i.lead_time_days,
+               COALESCE(SUM(CASE WHEN il.change_type IN ('used','deduct','auto-deduct','damage')
+                 AND il.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY) AND il.created_at < CURDATE()
+                 THEN ABS(il.quantity) ELSE 0 END), 0) AS used_14
+        FROM inventory i LEFT JOIN inventory_logs il ON il.inventory_id = i.id
+        GROUP BY i.id, i.name, i.cup_size, i.unit, i.qty, i.lead_time_days
+        ORDER BY i.name, i.cup_size
+    ")->fetchAll(PDO::FETCH_ASSOC);
+}
+$inventory = manager_forecast_inventory($pdo);
+if (isset($_GET['ajax_forecast'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $items = [];
+    foreach ($inventory as $item) {
+        $items[] = array_merge(['id' => (int) $item['id']], manager_inventory_display($item, manager_inventory_estimate($item)));
+    }
+    echo json_encode(['items' => $items]);
+    exit;
+}
+$salesSeries = analytics_daily_sales($pdo, 28);
+array_pop($salesSeries); // Exclude today's incomplete sales.
+$dailyForecast = analytics_weighted_forecast(array_column($salesSeries, 'revenue'));
+$hasSalesHistory = array_sum(array_column($salesSeries, 'orders')) > 0;
+$teamPerformance = $pdo->query("
+    SELECT u.username, u.full_name,
+      COUNT(CASE WHEN o.created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY) THEN o.id END) AS completed_orders,
+      COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY) THEN o.total ELSE 0 END), 0) AS total_sales,
+      COALESCE(SUM(CASE WHEN o.created_at < DATE_SUB(CURDATE(), INTERVAL 29 DAY) THEN o.total ELSE 0 END), 0) AS baseline_sales
+    FROM users u JOIN roles r ON r.id = u.role_id
+    LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'completed'
+      AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 59 DAY) AND o.created_at <= NOW()
+    WHERE LOWER(r.name) IN ('cashier', 'staff') AND u.status = 'active'
+    GROUP BY u.id, u.username, u.full_name ORDER BY total_sales DESC
+")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -104,65 +78,122 @@ function manager_number($value): string { return rtrim(rtrim(number_format((floa
 <body class="kape-manager-settings">
 <?php include dirname(__DIR__, 2) . '/includes/sidebar.php'; ?>
 <?php include dirname(__DIR__, 2) . '/includes/topbar.php'; ?>
-
 <main class="content manager-settings-page">
   <section class="manager-settings-hero">
-    <div><p>Manager <i class="fa fa-chevron-right"></i> Business Intelligence</p><h1>Forecast & Team Settings</h1><span>Set inventory reorder inputs and measure cashier performance without exposing system credentials.</span></div>
+    <div><p>Manager <i class="fa fa-chevron-right"></i> Business Intelligence</p><h1>Forecast & Team Settings</h1><span>Automatic sales estimates, cashier trends, and inventory recommendations from recorded activity.</span></div>
     <a href="reports.php"><i class="fa fa-chart-line"></i> View Reports</a>
   </section>
-
-  <?php if ($flash !== ''): ?><div class="manager-settings-alert <?= $flashType === 'error' ? 'error' : 'success' ?>" role="alert"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
-
-  <section class="manager-settings-panel">
-    <div class="manager-panel-heading"><div><span>Performance Controls</span><h2>Sales-team targets</h2></div><p>Used to monitor active cashiers over the selected review period.</p></div>
-    <form method="post" class="manager-target-form">
-      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['manager_settings_csrf']) ?>">
-      <input type="hidden" name="action" value="save_targets">
-      <label>Daily Target (PHP)<input type="number" min="0" step="0.01" name="sales_target_daily" value="<?= htmlspecialchars(settings_value($settings, 'sales_target_daily')) ?>" required></label>
-      <label>Weekly Target (PHP)<input type="number" min="0" step="0.01" name="sales_target_weekly" value="<?= htmlspecialchars(settings_value($settings, 'sales_target_weekly')) ?>" required></label>
-      <label>Monthly Target (PHP)<input type="number" min="0" step="0.01" name="sales_target_monthly" value="<?= htmlspecialchars(settings_value($settings, 'sales_target_monthly')) ?>" required></label>
-      <label>Review Period (days)<input type="number" min="1" max="365" name="performance_period_days" value="<?= (int) $periodDays ?>" required></label>
-      <button type="submit"><i class="fa fa-save"></i> Save Team Targets</button>
-    </form>
+  <div class="manager-section-tabs" role="tablist" aria-label="Forecast sections">
+    <button type="button" id="tab-sales" role="tab" aria-selected="true" aria-controls="panel-sales" data-manager-tab="sales">Sales Forecast</button>
+    <button type="button" id="tab-team" role="tab" aria-selected="false" aria-controls="panel-team" tabindex="-1" data-manager-tab="team">Team Performance</button>
+    <button type="button" id="tab-inventory" role="tab" aria-selected="false" aria-controls="panel-inventory" tabindex="-1" data-manager-tab="inventory">Inventory Forecast</button>
+  </div>
+  <section class="manager-settings-panel" id="panel-sales" role="tabpanel" aria-labelledby="tab-sales" tabindex="0">
+    <div class="manager-panel-heading"><div><span>Automatic Forecast</span><h2>Expected sales</h2></div><p>Generated from completed sales over the last two full weeks, with more weight on the latest week. Estimates are not guaranteed sales.</p></div>
+    <div class="manager-reorder-fields">
+      <?php foreach (['Daily estimate' => 1, 'Weekly estimate' => 7, 'Monthly estimate' => 30] as $label => $days): ?>
+        <label><?= htmlspecialchars($label) ?><strong><?= $hasSalesHistory ? htmlspecialchars(manager_money($dailyForecast * $days)) : 'Awaiting sales history' ?></strong></label>
+      <?php endforeach; ?>
+      <label>Review period<strong>Last 30 days</strong></label>
+    </div>
   </section>
-
-  <section class="manager-settings-panel">
-    <div class="manager-panel-heading"><div><span>Team Performance</span><h2>Cashier sales overview</h2></div><p>Completed transactions from the last <?= number_format($periodDays) ?> days.</p></div>
-    <div class="manager-table-wrap"><table><thead><tr><th>Cashier</th><th>Completed Orders</th><th>Total Sales</th><th>Average Order</th><th>Target Progress</th></tr></thead><tbody>
-      <?php if (!$teamPerformance): ?><tr><td colspan="5" class="manager-empty">No active cashier performance data is available.</td></tr><?php endif; ?>
+  <section class="manager-settings-panel" aria-labelledby="panel-promo-title">
+    <div class="manager-panel-heading"><div><span>POS Controls</span><h2 id="panel-promo-title">Promotional discount</h2></div><p>Set the approved promotional percentage and optional inclusive date range. Cashiers can apply it only while active.</p></div>
+    <?php if ($promoSettingsFlash !== ''): ?><div class="user-flash <?= $promoSettingsFlashType === 'error' ? 'error' : 'success' ?>" role="alert"><?= htmlspecialchars($promoSettingsFlash) ?></div><?php endif; ?>
+    <form method="post" class="manager-reorder-fields">
+      <label for="promo_discount_percent">Promo rate (%)<input id="promo_discount_percent" name="promo_discount_percent" type="number" min="0" max="100" step="0.01" value="<?= htmlspecialchars(settings_value($settings, 'promo_discount_percent')) ?>" required></label>
+      <label for="promo_discount_start_date">Start date (inclusive)<input id="promo_discount_start_date" name="promo_discount_start_date" type="date" value="<?= htmlspecialchars(settings_value($settings, 'promo_discount_start_date')) ?>"></label>
+      <label for="promo_discount_end_date">End date (inclusive)<input id="promo_discount_end_date" name="promo_discount_end_date" type="date" value="<?= htmlspecialchars(settings_value($settings, 'promo_discount_end_date')) ?>"></label>
+      <button type="submit" name="save_promo_discount" value="1">Save promo</button>
+    </form>
+    <p>Leave both dates blank for a promo with no date limit. The rate is active through the end date.</p>
+  </section>
+  <section class="manager-settings-panel" id="panel-team" role="tabpanel" aria-labelledby="tab-team" tabindex="0" hidden>
+    <div class="manager-panel-heading"><div><span>Team Performance</span><h2>Cashier sales overview</h2></div><p>Last 30 days (including today) versus the preceding 30 days. No manual goals required.</p></div>
+    <div class="manager-table-wrap"><table><thead><tr><th>Cashier</th><th>Completed Orders</th><th>Total Sales</th><th>Average Order</th><th>Previous 30 Days</th><th>Sales Change</th></tr></thead><tbody>
+      <?php if (!$teamPerformance): ?><tr><td colspan="6" class="manager-empty">No active cashier performance data is available.</td></tr><?php endif; ?>
       <?php foreach ($teamPerformance as $member): $orders = (int) $member['completed_orders']; ?>
-        <tr><td><strong><?= htmlspecialchars($member['full_name'] ?: $member['username']) ?></strong><small>@<?= htmlspecialchars($member['username']) ?></small></td><td><?= number_format($orders) ?></td><td><?= htmlspecialchars(manager_money($member['total_sales'])) ?></td><td><?= htmlspecialchars(manager_money($orders ? (float) $member['total_sales'] / $orders : 0)) ?></td><td><?= $periodTarget > 0 ? number_format(min(999, ((float) $member['total_sales'] / $periodTarget) * 100), 1) . '%' : 'Not set' ?></td></tr>
+        <tr>
+          <td><strong><?= htmlspecialchars($member['full_name'] ?: $member['username']) ?></strong><small>@<?= htmlspecialchars($member['username']) ?></small></td>
+          <td><?= number_format($orders) ?></td>
+          <td><?= htmlspecialchars(manager_money($member['total_sales'])) ?></td>
+          <td><?= htmlspecialchars(manager_money($orders ? (float) $member['total_sales'] / $orders : 0)) ?></td>
+          <td><?= htmlspecialchars(manager_money($member['baseline_sales'])) ?></td>
+          <td><?= (float) $member['baseline_sales'] > 0 ? sprintf('%+.1f%%', (((float) $member['total_sales'] / (float) $member['baseline_sales']) - 1) * 100) : 'Awaiting prior history' ?></td>
+        </tr>
       <?php endforeach; ?>
     </tbody></table></div>
   </section>
-
-  <section class="manager-settings-panel">
-    <div class="manager-panel-heading"><div><span>Inventory Forecasting</span><h2>Reorder parameters</h2></div><p>Recommended quantity is the target level minus current stock when an item reaches its reorder point.</p></div>
+  <section class="manager-settings-panel" id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" tabindex="0" hidden>
+    <div class="manager-panel-heading"><div><span>Inventory Forecasting</span><h2>Automatic restock recommendations</h2></div><p>Uses 14 complete days of consumption, a 2-day buffer, and saved supplier lead time (minimum 1 day). Restock to 7 days beyond lead time plus buffer when stock reaches the calculated reorder point.<span class="manager-forecast-live" id="managerForecastUpdated" aria-live="polite">Auto-updates every 15 seconds</span></p></div>
     <div class="manager-reorder-grid">
       <?php if (!$inventory): ?><p class="manager-empty">No inventory records are available.</p><?php endif; ?>
-      <?php foreach ($inventory as $item):
-        $dailyUse = (float) $item['used_14'] / 14;
-        $daysLeft = $dailyUse > 0 ? (float) $item['qty'] / $dailyUse : null;
-        $target = $item['target_stock'] !== null ? (float) $item['target_stock'] : max((float) $item['qty'], (float) ($item['critical_level'] ?? 0));
-        $recommended = max(0, $target - (float) $item['qty']);
-      ?>
-      <form method="post" class="manager-reorder-card">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['manager_settings_csrf']) ?>">
-        <input type="hidden" name="action" value="save_reorder"><input type="hidden" name="inventory_id" value="<?= (int) $item['id'] ?>">
-        <header><div><h3><?= htmlspecialchars($item['name']) ?></h3><span><?= htmlspecialchars($item['cup_size'] ?: 'Standard') ?> · <?= htmlspecialchars($item['unit']) ?></span></div><strong><?= htmlspecialchars(manager_number($item['qty'])) ?> on hand</strong></header>
-        <div class="manager-forecast-line"><span><?= $daysLeft === null ? 'No usage trend' : number_format($daysLeft, 1) . ' days remaining' ?></span><span>Recommended: <?= htmlspecialchars(manager_number($recommended)) ?></span></div>
+      <?php foreach ($inventory as $item): $display = manager_inventory_display($item, manager_inventory_estimate($item)); ?>
+      <article class="manager-reorder-card" data-forecast-item="<?= (int) $item['id'] ?>">
+        <header><div><h3><?= htmlspecialchars($item['name']) ?></h3><span><?= htmlspecialchars($item['cup_size'] ?: 'Standard') ?> &middot; <?= htmlspecialchars($item['unit']) ?></span></div><strong><span data-forecast-qty><?= htmlspecialchars($display['qty']) ?></span> on hand</strong></header>
+        <div class="manager-forecast-line"><span data-forecast-daysLeft><?= htmlspecialchars($display['daysLeft']) ?></span><span>Recommended: <strong data-forecast-recommended><?= htmlspecialchars($display['recommended']) ?></strong></span></div>
         <div class="manager-reorder-fields">
-          <label>Reorder Point<input type="number" min="0" step="0.01" name="critical_level" value="<?= htmlspecialchars(manager_number($item['critical_level'] ?? 0)) ?>" required></label>
-          <label>Safety Stock<input type="number" min="0" step="0.01" name="safety_stock" value="<?= htmlspecialchars(manager_number($item['safety_stock'])) ?>" required></label>
-          <label>Lead Time (days)<input type="number" min="1" max="365" name="lead_time_days" value="<?= max(1, (int) $item['lead_time_days']) ?>" required></label>
-          <label>Target Stock<input type="number" min="0" step="0.01" name="target_stock" value="<?= htmlspecialchars(manager_number($target)) ?>" required></label>
+          <?php foreach (['reorder' => 'Calculated reorder point', 'buffer' => 'Calculated safety stock', 'lead' => 'Supplier lead time (days)', 'target' => 'Calculated target stock'] as $key => $label): ?>
+            <label><?= htmlspecialchars($label) ?><strong data-forecast-<?= $key ?>><?= htmlspecialchars($display[$key]) ?></strong></label>
+          <?php endforeach; ?>
         </div>
-        <button type="submit">Save Parameters</button>
-      </form>
+      </article>
       <?php endforeach; ?>
     </div>
   </section>
 </main>
 <?php include dirname(__DIR__) . '/partials/admin_footer.php'; ?>
+<script>
+(function () {
+  const tabs = Array.from(document.querySelectorAll('[data-manager-tab]'));
+  function selectTab(tab) {
+    tabs.forEach(function (button) {
+      const selected = button === tab;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      document.getElementById(button.getAttribute('aria-controls')).hidden = !selected;
+    });
+    if (tab.dataset.managerTab === 'inventory') updateManagerForecast();
+    window.dispatchEvent(new Event('resize'));
+  }
+  tabs.forEach(function (tab, index) {
+    tab.addEventListener('click', function () { selectTab(tab); });
+    tab.addEventListener('keydown', function (event) {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = tabs.length - 1;
+      if (next === undefined) return;
+      event.preventDefault();
+      selectTab(tabs[next]);
+      tabs[next].focus();
+    });
+  });
+  async function updateManagerForecast() {
+    if (document.hidden || document.getElementById('panel-inventory').hidden) return;
+    try {
+      const response = await fetch('manager_settings.php?ajax_forecast=1&t=' + Date.now(), { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = await response.json();
+      (data.items || []).forEach(function (item) {
+        const card = document.querySelector('[data-forecast-item="' + item.id + '"]');
+        if (!card) return;
+        ['qty', 'daysLeft', 'recommended', 'reorder', 'buffer', 'lead', 'target'].forEach(function (key) {
+          const field = card.querySelector('[data-forecast-' + key + ']');
+          if (field) field.textContent = item[key];
+        });
+      });
+      const stamp = document.getElementById('managerForecastUpdated');
+      if (stamp) stamp.textContent = 'Auto-updating · Last updated ' + new Date().toLocaleTimeString('en-PH');
+    } catch (error) {
+      const stamp = document.getElementById('managerForecastUpdated');
+      if (stamp) stamp.textContent = 'Update unavailable. Showing last received forecast; retrying automatically.';
+    }
+  }
+  window.setInterval(updateManagerForecast, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) updateManagerForecast(); });
+})();
+</script>
 </body>
 </html>

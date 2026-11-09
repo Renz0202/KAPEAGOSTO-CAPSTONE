@@ -73,19 +73,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($category_id <= 0) {
         $errors[] = 'Category is required.';
     }
-    if (!is_array($cup_sizes) || !is_array($prices) || count($cup_sizes) === 0) {
-        $errors[] = 'At least one cup size and price is required.';
+    if (!is_array($cup_sizes) || !is_array($prices) || count($cup_sizes) < 1 || count($cup_sizes) > 3 || count($prices) !== count($cup_sizes)) {
+        $errors[] = 'Choose one or more cup sizes and enter a price for each.';
     }
 
     $rows = [];
+    $seenCupSizes = [];
     foreach ($cup_sizes as $index => $cup_size) {
         $cup_size = trim((string)$cup_size);
         $price = $prices[$index] ?? null;
-        if ($cup_size === '' || !is_numeric($price) || (float)$price <= 0) {
-            $errors[] = 'Each cup size needs a valid price greater than zero.';
+        $allowedCupSizes = ['12oz Hot', '16oz', '22oz'];
+        if (!in_array($cup_size, $allowedCupSizes, true) || !is_numeric($price) || (float)$price <= 0) {
+            $errors[] = 'Each supported cup size needs a valid price greater than zero.';
             break;
         }
+        if (isset($seenCupSizes[$cup_size])) {
+            $errors[] = 'Choose each cup size only once.';
+            break;
+        }
+        $seenCupSizes[$cup_size] = true;
         $rows[] = [$cup_size, (float)$price];
+    }
+
+    if (!$errors) {
+        $existingVariant = $pdo->prepare('SELECT COUNT(*) FROM items WHERE name = ? AND category_id = ? AND cup_size IN (?, ?)');
+        foreach ($rows as [$cup_size]) {
+            $legacySize = ['16oz' => '16oz Cold', '22oz' => '22oz Cold'][$cup_size] ?? $cup_size;
+            $existingVariant->execute([$name, $category_id, $cup_size, $legacySize]);
+            if ((int)$existingVariant->fetchColumn() > 0) {
+                $errors[] = 'This item already has a price for ' . $cup_size . '.';
+                break;
+            }
+        }
     }
 
     $image = null;
@@ -103,13 +122,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([item_sku($skuPosted, $name, $cup_size, true), $name, $category_id, $price, $cup_size, $image]);
         }
         $_SESSION['flash'] = 'Item added successfully.';
+        $_SESSION['flash_type'] = 'success';
         header('Location: items.php');
         exit;
     }
 
-    $_SESSION['flash'] = implode(' ', $errors);
     if (!empty($_POST['inline_add'])) {
-        header('Location: items.php');
+        $_SESSION['flash'] = implode(' ', $errors);
+        $_SESSION['flash_type'] = 'error';
+        header('Location: items.php?create=1');
         exit;
     }
 }
@@ -131,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div>
       <p class="item-breadcrumb"><?= htmlspecialchars(role_display_name(current_user_role())) ?> <i class="fa fa-chevron-right"></i> Manage Item</p>
       <h1 id="add-item-title">Add Item</h1>
-      <p class="item-page-copy">Create one menu item with one or more cup-size prices.</p>
+      <p class="item-page-copy">Add one or more cup sizes, with a separate price for each.</p>
     </div>
     <a href="items.php" class="item-secondary-action"><i class="fa fa-arrow-left"></i> Back to Items</a>
   </section>
@@ -144,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <aside class="item-edit-aside">
       <div class="item-edit-preview"><i class="fa fa-mug-saucer"></i></div>
       <h2>Menu Item</h2>
-      <p>Add sizes one at a time or use the add size control for multiple prices.</p>
+      <p>Hot drinks are 12oz. Cold drinks are 16oz or 22oz.</p>
     </aside>
 
     <form method="post" enctype="multipart/form-data" class="item-edit-form">
@@ -166,20 +187,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </select>
       </div>
       <div class="form-group full">
-        <label>Cup Sizes With Prices</label>
+        <label for="add_item_size">Cup Size</label>
         <div id="cup-size-container" class="cup-size-container">
           <div class="cup-size-row">
-            <select name="cup_sizes[]" required>
-              <option value="">Select Cup Size</option>
+            <select id="add_item_size" name="cup_sizes[]" required>
               <option value="12oz Hot">12oz Hot</option>
               <option value="16oz">16oz</option>
               <option value="22oz">22oz</option>
             </select>
             <input type="number" step="0.01" name="prices[]" placeholder="Price" required>
-            <button type="button" class="item-row-remove" onclick="removeCupSizeRow(this)"><i class="fa fa-xmark"></i></button>
+            <button type="button" class="item-row-remove" aria-label="Remove cup size" hidden><i class="fa fa-xmark"></i></button>
           </div>
         </div>
-        <button type="button" class="item-add-row" onclick="addCupSizeRow()"><i class="fa fa-plus"></i> Add Cup Size</button>
+        <button type="button" class="item-add-row" id="addCupSizeRow"><i class="fa fa-plus"></i> Add Another Cup Size</button>
       </div>
       <div class="form-group full">
         <label for="image">Image</label>
@@ -195,29 +215,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php include dirname(__DIR__) . '/partials/admin_footer.php'; ?>
 
 <script>
-function addCupSizeRow() {
+(function () {
   const container = document.getElementById('cup-size-container');
-  const row = document.createElement('div');
-  row.className = 'cup-size-row';
-  row.innerHTML = `
-    <select name="cup_sizes[]" required>
-      <option value="">Select Cup Size</option>
-      <option value="12oz Hot">12oz Hot</option>
-      <option value="16oz">16oz</option>
-      <option value="22oz">22oz</option>
-    </select>
-    <input type="number" step="0.01" name="prices[]" placeholder="Price" required>
-    <button type="button" class="item-row-remove" onclick="removeCupSizeRow(this)"><i class="fa fa-xmark"></i></button>
-  `;
-  container.appendChild(row);
-}
+  const addButton = document.getElementById('addCupSizeRow');
+  const cupSizes = ['12oz Hot', '16oz', '22oz'];
 
-function removeCupSizeRow(button) {
-  const rows = document.querySelectorAll('.cup-size-row');
-  if (rows.length > 1) {
-    button.closest('.cup-size-row').remove();
+  if (!container || !addButton) return;
+
+  function refreshRows() {
+    const rows = Array.from(container.querySelectorAll('.cup-size-row'));
+    rows.forEach(function (row) {
+      const select = row.querySelector('select[name="cup_sizes[]"]');
+      const remove = row.querySelector('.item-row-remove');
+      Array.from(select.options).forEach(function (option) {
+        option.disabled = option.value !== select.value && rows.some(function (otherRow) {
+          return otherRow !== row && otherRow.querySelector('select[name="cup_sizes[]"]').value === option.value;
+        });
+      });
+      remove.hidden = rows.length === 1;
+    });
+    addButton.disabled = rows.length >= cupSizes.length;
   }
-}
+
+  function createRow() {
+    const row = document.createElement('div');
+    row.className = 'cup-size-row';
+    const usedSizes = new Set(Array.from(container.querySelectorAll('select[name="cup_sizes[]"]')).map(function (select) { return select.value; }));
+    const nextSize = cupSizes.find(function (size) { return !usedSizes.has(size); });
+    if (!nextSize) return;
+    const select = document.createElement('select');
+    select.name = 'cup_sizes[]';
+    select.required = true;
+    cupSizes.forEach(function (size) {
+      const option = document.createElement('option');
+      option.value = size;
+      option.textContent = size;
+      select.appendChild(option);
+    });
+    select.value = nextSize;
+    const price = document.createElement('input');
+    price.type = 'number';
+    price.name = 'prices[]';
+    price.step = '0.01';
+    price.min = '0.01';
+    price.placeholder = 'Price';
+    price.required = true;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'item-row-remove';
+    remove.setAttribute('aria-label', 'Remove cup size');
+    remove.innerHTML = '<i class="fa fa-xmark" aria-hidden="true"></i>';
+    remove.addEventListener('click', function () {
+      row.remove();
+      refreshRows();
+    });
+    select.addEventListener('change', refreshRows);
+    row.append(select, price, remove);
+    container.appendChild(row);
+    refreshRows();
+  }
+
+  container.querySelector('select[name="cup_sizes[]"]')?.addEventListener('change', refreshRows);
+  container.querySelector('.item-row-remove')?.addEventListener('click', function (event) {
+    event.currentTarget.closest('.cup-size-row')?.remove();
+    refreshRows();
+  });
+  addButton.addEventListener('click', createRow);
+  refreshRows();
+})();
 </script>
+
 </body>
 </html>

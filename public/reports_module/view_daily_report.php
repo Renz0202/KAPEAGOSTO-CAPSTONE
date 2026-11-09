@@ -2,11 +2,20 @@
 // Ensure PHP starts at the first byte so no stray output appears before the HTML.
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
 require_once dirname(__DIR__, 2) . "/includes/db.php";
+require_once dirname(__DIR__, 2) . '/includes/settings.php';
 require_capability('view_reports');
 
 date_default_timezone_set('Asia/Manila');
 
 $pdo = db();
+
+$reportSettings = settings_all($pdo);
+$ownerName = trim(settings_value($reportSettings, 'owner_name'));
+if ($ownerName !== '') {
+    $ownerName = function_exists('mb_convert_case')
+        ? mb_convert_case($ownerName, MB_CASE_TITLE, 'UTF-8')
+        : ucwords(strtolower($ownerName));
+}
 
 // Robust detection of PhpSpreadsheet
 $hasXlsx = false;
@@ -26,9 +35,18 @@ if ($autoload) {
 $date = $_GET['date'] ?? date('Y-m-d');
 
 // Fetch report summary
-$stmt = $pdo->prepare("SELECT * FROM daily_sales_reports WHERE report_date = ?");
+$stmt = $pdo->prepare("SELECT r.*, COALESCE(NULLIF(TRIM(u.full_name), ''), NULLIF(TRIM(u.username), ''), CAST(r.generated_by AS CHAR), 'System') AS generated_by_display FROM daily_sales_reports r LEFT JOIN users u ON u.id = r.generated_by WHERE r.report_date = ?");
 $stmt->execute([$date]);
 $report = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($report) {
+    $preparedBy = trim((string) ($report['generated_by_display'] ?? ''));
+    if ($preparedBy !== '' && strtolower($preparedBy) !== 'system') {
+        $preparedBy = function_exists('mb_convert_case')
+            ? mb_convert_case($preparedBy, MB_CASE_TITLE, 'UTF-8')
+            : ucwords(strtolower($preparedBy));
+        $report['generated_by_display'] = $preparedBy;
+    }
+}
 
 if (!$report) {
     // return JSON for partial requests instead of HTML
@@ -67,7 +85,7 @@ $inv_stmt = $pdo->prepare("
                         'consume','consumed','consumption',
                         'deduct','deduction',
                         'auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage',
-                        'damage'
+                        'damage','spoilage'
                     )
                     OR LOWER(remarks) LIKE '%auto-deduct%'
                     OR LOWER(remarks) LIKE '%auto deduct%'
@@ -108,7 +126,7 @@ $inv_stmt = $pdo->prepare("
                         'consume','consumed','consumption',
                         'deduct','deduction',
                         'auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage',
-                        'damage'
+                        'damage','spoilage'
                     )
                  OR LOWER(remarks) LIKE '%auto-deduct%'
                  OR LOWER(remarks) LIKE '%auto deduct%'
@@ -130,7 +148,7 @@ $inv_stmt = $pdo->prepare("
                             'consume','consumed','consumption',
                             'deduct','deduction',
                             'auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage',
-                            'damage'
+                            'damage','spoilage'
                         )
                         OR LOWER(remarks) LIKE '%auto-deduct%'
                         OR LOWER(remarks) LIKE '%auto deduct%'
@@ -149,7 +167,7 @@ $inv_stmt = $pdo->prepare("
                   AND DATE(created_at) >= ?
             ), 0))
             + COALESCE((SELECT SUM(quantity) FROM inventory_logs WHERE inventory_id = inv.id AND DATE(created_at) = ? AND (LOWER(change_type) IN ('added','restock') OR (LOWER(change_type)='adjustment' AND quantity>0))), 0)
-            - COALESCE((SELECT SUM(quantity) FROM inventory_logs WHERE inventory_id = inv.id AND DATE(created_at) = ? AND (LOWER(change_type) IN ('used','use','usage','consume','consumed','consumption','deduct','deduction','auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage','damage') OR LOWER(remarks) LIKE '%auto-deduct%' OR LOWER(remarks) LIKE '%auto deduct%' OR LOWER(remarks) LIKE '%auto_deduct%' OR LOWER(remarks) LIKE '%auto-use%' OR LOWER(remarks) LIKE '%auto use%' OR LOWER(remarks) LIKE '%auto_usage%' OR (LOWER(change_type)='adjustment' AND quantity<0))), 0)
+            - COALESCE((SELECT SUM(quantity) FROM inventory_logs WHERE inventory_id = inv.id AND DATE(created_at) = ? AND (LOWER(change_type) IN ('used','use','usage','consume','consumed','consumption','deduct','deduction','auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage','damage','spoilage') OR LOWER(remarks) LIKE '%auto-deduct%' OR LOWER(remarks) LIKE '%auto deduct%' OR LOWER(remarks) LIKE '%auto_deduct%' OR LOWER(remarks) LIKE '%auto-use%' OR LOWER(remarks) LIKE '%auto use%' OR LOWER(remarks) LIKE '%auto_usage%' OR (LOWER(change_type)='adjustment' AND quantity<0))), 0)
         ) AS remaining
     FROM inventory inv
     ORDER BY inv.name, inv.cup_size
@@ -202,7 +220,7 @@ if (isset($_GET['partial'])) {
             'total_orders'  => (int)$report['total_orders'],
             'voided_orders' => (int)$voided_count,
             'sales_tax'     => (float)$report['sales_tax'],
-            'generated_by'  => (string)$report['generated_by'],
+            'generated_by'  => (string)$report['generated_by_display'],
             'notes'         => (string)$report['notes'],
             'report_date'   => (string)$report['report_date'],
         ],
@@ -234,7 +252,7 @@ if (isset($_GET['partial'])) {
 <head>
     <meta charset="UTF-8">
     <!-- removed meta refresh; JS polling used for realtime -->
-    <title>View Daily Report – <?= htmlspecialchars($date) ?> | Kape Agosto</title>
+    <title>Daily Operations Report - <?= htmlspecialchars($date) ?> | Kape Agosto</title>
     <?php include dirname(__DIR__) . '/partials/stylesheets.php'; ?>
     </head>
 <body class="kape-reports-module-view-daily-report">
@@ -243,18 +261,19 @@ if (isset($_GET['partial'])) {
 
 <main class="content report-detail-page">
 <div class="report-view">
-    <h2>🗓️ Daily Report for <?= date('F d, Y', strtotime($date)) ?></h2>
+    <div class="report-print-brand"><strong>KAPE AGOSTO</strong><span>Daily Operations Report</span></div>
+    <h2>Daily Report for <?= date('F d, Y', strtotime($date)) ?></h2>
     <div class="summary">
-        <b>Total Sales:</b> ₱<span id="sum-total-sales"><?= number_format($report['total_sales'],2) ?></span><br>
+        <b>Total Sales:</b> &#8369;<span id="sum-total-sales"><?= number_format($report['total_sales'],2) ?></span><br>
         <b>Total Orders:</b> <span id="sum-total-orders"><?= (int)$report['total_orders'] ?></span><br>
         <b>Voided Orders:</b> <span id="sum-voided-orders"><?= (int)$voided_count ?></span><br>
-        <b>Sales Tax (12%):</b> ₱<span id="sum-sales-tax"><?= number_format($report['sales_tax'],2) ?></span><br>
-        <b>Generated By:</b> <span id="sum-generated-by"><?= htmlspecialchars($report['generated_by']) ?></span><br>
+        <b>Sales Tax (12%):</b> &#8369;<span id="sum-sales-tax"><?= number_format($report['sales_tax'],2) ?></span><br>
+        <b>Generated By:</b> <span id="sum-generated-by"><?= htmlspecialchars($report['generated_by_display']) ?></span><br>
         <b>Notes:</b> <span id="sum-notes"><?= htmlspecialchars($report['notes']) ?></span><br>
         <b>Report Date:</b> <span id="sum-report-date"><?= date('F d, Y', strtotime($report['report_date'])) ?></span>
     </div>
 
-    <h3>📊 Sales Summary</h3>
+    <h3>Sales Summary</h3>
     <table>
         <thead>
             <tr>
@@ -268,16 +287,16 @@ if (isset($_GET['partial'])) {
             <?php foreach ($sales_items as $row): ?>
             <tr>
                 <td><?= htmlspecialchars($row['item_name']) ?></td>
-                <td>₱<?= number_format($row['price'],2) ?></td>
+                <td>&#8369;<?= number_format($row['price'],2) ?></td>
                 <td><?= $row['qty'] ?></td>
-                <td>₱<?= number_format($row['subtotal'],2) ?></td>
+                <td>&#8369;<?= number_format($row['subtotal'],2) ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 
-    <h3>📦 Inventory Usage</h3>
-    <div class="muted">Beginning = stock as of 12:00 AM on <?= htmlspecialchars(date('F d, Y', strtotime($date))) ?> • <span id="inv-last-updated">Last updated: —</span></div>
+    <h3>Inventory Usage</h3>
+    <div class="muted">Beginning = stock on hand at 12:00 AM on <?= htmlspecialchars(date('F d, Y', strtotime($date))) ?>. <span id="inv-last-updated">Last updated: Not yet refreshed</span></div>
     <table>
         <thead>
             <tr>
@@ -305,11 +324,29 @@ if (isset($_GET['partial'])) {
         </tbody>
     </table>
 
-    <div style="margin-top:20px;">
+    <section class="report-signatories" aria-label="Report signatories">
+        <div class="report-signatory">
+            <div class="signature-line"></div>
+            <strong><?= htmlspecialchars($report['generated_by_display']) ?></strong>
+            <span>Prepared by</span>
+            <small>Signature over printed name</small>
+        </div>
+        <div class="report-signatory">
+            <div class="signature-line"></div>
+            <strong><?= $ownerName !== '' ? htmlspecialchars($ownerName) : '&nbsp;' ?></strong>
+            <span>Approved by (Owner)</span>
+            <small>Owner's complete name and signature</small>
+        </div>
+    </section>
+
+    <div class="report-actions" style="margin-top:20px;">
         <a href="reports.php" class="btn gray"><i class="fa fa-arrow-left"></i> Back to Reports</a>
-        <a href="scripts/export_daily_report_excel.php?date=<?= urlencode($date) ?>" class="btn green" title="<?= $hasXlsx ? 'Styled Excel (.xlsx)' : 'Styled Excel (HTML .xls)' ?>">
-            <i class="fa fa-file-excel"></i> <?= $hasXlsx ? 'Export Excel (Styled)' : 'Export Excel (HTML)' ?>
-        </a>
+        <button type="button" class="btn print-button" onclick="window.print()"><i class="fa fa-print"></i> Print Report</button>
+        <?php if (can('export_reports')): ?>
+            <a href="../scripts/export_daily_report_excel.php?date=<?= urlencode($date) ?>" class="btn green" title="<?= $hasXlsx ? 'Styled Excel (.xlsx)' : 'Styled Excel (HTML .xls)' ?>">
+                <i class="fa fa-file-excel"></i> <?= $hasXlsx ? 'Export Excel (Styled)' : 'Export Excel (HTML)' ?>
+            </a>
+        <?php endif; ?>
         <?php if (!$hasXlsx): ?>
             <div class="muted" style="margin-top:6px">
                 Note: Export uses HTML-based Excel (.xls). For native .xlsx, install PhpSpreadsheet:
@@ -361,9 +398,9 @@ if (isset($_GET['partial'])) {
             salesTbody.innerHTML = (data.sales_items || []).map(r => `
                 <tr>
                     <td>${esc(r.item_name)}</td>
-                    <td>₱${fmtMoney(r.price)}</td>
+                    <td>&#8369;${fmtMoney(r.price)}</td>
                     <td>${r.qty}</td>
-                    <td>₱${fmtMoney(r.subtotal)}</td>
+                    <td>&#8369;${fmtMoney(r.subtotal)}</td>
                 </tr>
             `).join('');
 

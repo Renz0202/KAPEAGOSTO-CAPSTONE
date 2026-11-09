@@ -27,5 +27,7 @@ function db(): PDO {
         }
     }
 
+    $actor = (int) ($_SESSION['user']['id'] ?? $_SESSION['user_id'] ?? 0);
+    $pdo->exec('SET @kape_actor_id = ' . ($actor > 0 ? $actor : 'NULL'));
     return $pdo;
 }

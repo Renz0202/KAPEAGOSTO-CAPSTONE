@@ -6,14 +6,25 @@ require_login();
 
 $pdo = db();
 $userId = (int) ($_SESSION['user']['id'] ?? 0);
+$notificationVisibility = 'user_id IS NULL OR user_id = ?';
+if (is_manager()) {
+    $notificationVisibility .= " OR (notification_type = 'general' AND entity_type IS NULL AND message LIKE 'Order #% has been voided by admin %')";
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $stmt = $pdo->prepare('UPDATE notifications SET is_read = 1, read_at = NOW() WHERE user_id IS NULL OR user_id = ?');
+    $stmt = $pdo->prepare('UPDATE notifications SET is_read = 1, read_at = NOW() WHERE (' . $notificationVisibility . ')');
     $stmt->execute([$userId]);
+
+    if (strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
     header('Location: notifications.php');
     exit;
 }
 
-$stmt = $pdo->prepare('SELECT * FROM notifications WHERE user_id IS NULL OR user_id = ? ORDER BY is_read ASC, created_at DESC LIMIT 100');
+$stmt = $pdo->prepare('SELECT * FROM notifications WHERE (' . $notificationVisibility . ') ORDER BY is_read ASC, created_at DESC LIMIT 100');
 $stmt->execute([$userId]);
 $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>

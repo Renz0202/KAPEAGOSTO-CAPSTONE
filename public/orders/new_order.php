@@ -4,6 +4,7 @@ require_once dirname(__DIR__, 2) . "/includes/db.php";
 require_once dirname(__DIR__, 2) . "/includes/order_utils.php";
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
 require_once dirname(__DIR__, 2) . "/includes/name_utils.php";
+require_once dirname(__DIR__, 2) . '/includes/inventory_requirements.php';
 require_capability('process_transactions');
 
 $pdo = db();
@@ -17,19 +18,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (!empty($selected_items)) {
         $pdo->beginTransaction();
         try {
+            $lines = [];
+            foreach ($selected_items as $itemId => $qty) {
+                if ((string) $qty !== '' && (string) $qty !== '0') $lines[] = ['id' => $itemId, 'qty' => $qty];
+            }
+            $lines = inventory_service_checkout_lines($pdo, $lines);
+            inventory_service_assert_stock($pdo, $lines);
             // Insert order (order_code will be assigned centrally after insert)
             $stmt = $pdo->prepare("INSERT INTO orders (user_id, customer_name, total, status, created_at) VALUES (?, ?, ?, 'pending', NOW())");
-            $total = 0;
-
-            foreach ($selected_items as $item_id => $qty) {
-                if ($qty > 0) {
-                    $item = $pdo->prepare("SELECT * FROM items WHERE id=?");
-                    $item->execute([$item_id]);
-                    $itemData = $item->fetch();
-
-                    $total += $itemData['price'] * $qty;
-                }
-            }
+            $total = array_sum(array_map(static fn($line) => $line['price'] * $line['qty'], $lines));
 
             $stmt->execute([$_SESSION['user']['id'] ?? null, $customer_name, $total]);
             $order_id = $pdo->lastInsertId();
@@ -37,24 +34,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             // Assign centralized daily order code
             ensure_order_code($pdo, (int)$order_id);
 
-            // Insert order items
-            foreach ($selected_items as $item_id => $qty) {
-                if ($qty > 0) {
-                    $item = $pdo->prepare("SELECT * FROM items WHERE id=?");
-                    $item->execute([$item_id]);
-                    $itemData = $item->fetch();
-
-                    $stmt = $pdo->prepare("INSERT INTO order_items (order_id, item_id, qty, price) VALUES (?, ?, ?, ?)");
-                    $stmt->execute([$order_id, $item_id, $qty, $itemData['price']]);
-                }
-            }
-
+            $insert = $pdo->prepare('INSERT INTO order_items (order_id, item_id, qty, price) VALUES (?, ?, ?, ?)');
+            foreach ($lines as $line) $insert->execute([$order_id, $line['id'], $line['qty'], $line['price']]);
             $pdo->commit();
             header("Location: orders.php");
             exit;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $pdo->rollBack();
-            die("Error: " . $e->getMessage());
+            http_response_code(409);
+            exit(htmlspecialchars($e instanceof PDOException ? 'The order could not be saved.' : $e->getMessage()));
         }
     }
 }

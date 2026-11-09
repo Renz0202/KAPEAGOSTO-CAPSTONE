@@ -34,7 +34,7 @@ $type = $event->type ?? '';
 $data = $event->data->object ?? null;
 
 // Handle checkout.session.completed
-if ($type === 'checkout.session.completed' && $data) {
+if (in_array($type, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true) && $data && ($data->payment_status ?? '') === 'paid') {
     $sessionId = $data->id ?? null;
     $orderId = isset($data->metadata->order_id) ? (int)$data->metadata->order_id : 0;
     $paymentIntent = $data->payment_intent ?? null;
@@ -46,8 +46,13 @@ if ($type === 'checkout.session.completed' && $data) {
 
         if ($payment) {
             // Update to succeeded
-            $upd = $pdo->prepare('UPDATE payments SET status = "succeeded", provider_payment_id = ?, raw_response = ?, paid_at = NOW(), updated_at = NOW() WHERE id = ?');
-            $upd->execute([$paymentIntent, $payload, $payment['id']]);
+            try {
+                transaction_confirm_card($pdo, $sessionId, $paymentIntent, null, $payload);
+            } catch (Throwable $e) {
+                error_log('Card confirmation failed: ' . $e->getMessage());
+                http_response_code(500);
+                exit('Payment confirmation failed');
+            }
         }
     }
 }

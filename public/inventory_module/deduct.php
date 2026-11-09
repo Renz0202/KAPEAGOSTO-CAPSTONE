@@ -2,6 +2,7 @@
 session_start();
 require_once dirname(__DIR__, 2) . "/includes/db.php";
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
+require_once dirname(__DIR__, 2) . '/includes/inventory_service.php';
 require_admin();
 
 $pdo = db();
@@ -20,26 +21,16 @@ if (!$item) {
     die("Item not found!");
 }
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $qty = (int) $_POST['quantity'];
-
-    if ($qty > 0) {
-        if ($qty <= $item['qty']) {
-            // 1. Update stock
-            $remaining = (float) $item['qty'] - $qty;
-            $pdo->prepare("UPDATE inventory SET qty = ? WHERE id=?")->execute([$remaining, $id]);
-
-            // 2. Insert log
-            $logStmt = $pdo->prepare("INSERT INTO inventory_logs (inventory_id, change_type, quantity, remaining, remarks) VALUES (?, 'deduct', ?, ?, 'Manual deduction')");
-            $logStmt->execute([$id, $qty, $remaining]);
-        } else {
-            $_SESSION['flash'] = "Not enough stock to deduct! (Available: {$item['qty']})";
-            header("Location: inventory.php");
-            exit;
-        }
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $pdo->beginTransaction();
+        inventory_service_adjust_stock($pdo, (int) $id, $_POST['quantity'] ?? null, 'deduct', (int) ($_SESSION['user']['id'] ?? 0) ?: null, 'Manual deduct');
+        $pdo->commit();
+        header('Location: inventory.php?used=1');
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        header('Location: inventory.php?error=1');
     }
-
-    header("Location: inventory.php");
     exit;
 }
 ?>
@@ -61,8 +52,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <div class="form-card">
       <form method="post">
         <div class="form-group">
-          <label>Quantity to Deduct:</label>
-          <input type="number" name="quantity" min="1" max="<?= htmlspecialchars($item['qty']) ?>" required>
+          <label>Quantity to Deduct (<?= htmlspecialchars($item['unit']) ?>):</label>
+          <input type="number" name="quantity" step="0.01" min="0.01" max="<?= htmlspecialchars($item['qty']) ?>" required>
         </div>
         <button type="submit">Deduct Stock</button>
       </form>

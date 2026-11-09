@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/public/partials/assets.php';
+
 if (session_status() === PHP_SESSION_NONE) {
     @session_start();
 }
@@ -13,6 +15,7 @@ $userEmail = null;
 $userRole = null;
 $userImage = '';
 $notificationCount = 0;
+$topbarNotifications = [];
 
 if (isset($_SESSION['user']) && is_array($_SESSION['user'])) {
     $userName = $_SESSION['user']['name']
@@ -49,9 +52,24 @@ if (isset($_SESSION['user']) && is_array($_SESSION['user'])) {
                 $_SESSION['user']['role'] = $userRole;
                 $_SESSION['user']['image'] = $userImage;
             }
-            $notificationStmt = db()->prepare('SELECT COUNT(*) FROM notifications WHERE (user_id IS NULL OR user_id = ?) AND is_read = 0');
+            $notificationVisibility = 'user_id IS NULL OR user_id = ?';
+            if (function_exists('is_manager') && is_manager()) {
+                $notificationVisibility .= " OR (notification_type = 'general' AND entity_type IS NULL AND message LIKE 'Order #% has been voided by admin %')";
+            }
+
+            $notificationStmt = db()->prepare('SELECT COUNT(*) FROM notifications WHERE (' . $notificationVisibility . ') AND is_read = 0');
             $notificationStmt->execute([$userId]);
             $notificationCount = (int) $notificationStmt->fetchColumn();
+
+            $notificationListStmt = db()->prepare('
+                SELECT id, notification_type, entity_type, entity_id, message, is_read, created_at
+                FROM notifications
+                WHERE (' . $notificationVisibility . ')
+                ORDER BY is_read ASC, created_at DESC
+                LIMIT 6
+            ');
+            $notificationListStmt->execute([$userId]);
+            $topbarNotifications = $notificationListStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
             error_log('Topbar user refresh failed: ' . $e->getMessage());
         }
@@ -86,7 +104,6 @@ if ($normalizedTopbarRole === 'business_admin') {
 }
 $settingsHref = $normalizedTopbarRole === 'manager' ? 'manager_settings.php' : 'settings.php';
 $showSettingsLink = in_array($normalizedTopbarRole, ['admin', 'manager'], true);
-$systemMaintenanceMode = function_exists('system_is_maintenance') && system_is_maintenance();
 
 $hour = (int) date('G');
 $greeting = $hour < 12 ? 'Good Morning' : ($hour < 18 ? 'Good Afternoon' : 'Good Evening');
@@ -98,38 +115,75 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
 ?>
 <div class="topbar">
   <div class="topbar-left">
-    <button type="button" class="hamburger js-sidebar-toggle" aria-label="Open navigation" aria-controls="sidebar">
-      <i class="fa fa-bars"></i>
-    </button>
-
     <div class="topbar-heading">
       <span class="topbar-kicker">Workspace</span>
       <h1 class="topbar-title"><?= htmlspecialchars($greeting) ?>, <?= htmlspecialchars($firstName) ?></h1>
     </div>
   </div>
 
-  <div class="topbar-center">
-    <?php if ($systemMaintenanceMode): ?>
-      <a class="topbar-maintenance-status" href="maintenance.php" aria-label="Maintenance mode: transactions are paused">
-        <i class="fa fa-screwdriver-wrench" aria-hidden="true"></i>
-        <span><strong>Maintenance Mode</strong><small>Transactions paused</small></span>
-      </a>
-    <?php else: ?>
-      <div class="topbar-search" role="search">
-        <i class="fa fa-magnifying-glass" aria-hidden="true"></i>
-        <input type="search" aria-label="Search" placeholder="Search orders, items, or users...">
-      </div>
-    <?php endif; ?>
-  </div>
-
   <div class="topbar-right">
-    <a href="dashboard.php" class="topbar-icon-btn" title="Dashboard" aria-label="Dashboard">
-      <i class="fa fa-gauge-high"></i>
-    </a>
-    <a href="notifications.php" class="topbar-icon-btn topbar-notification" title="Notifications" aria-label="Notifications<?= $notificationCount ? ' (' . $notificationCount . ' unread)' : '' ?>">
-      <i class="fa fa-bell"></i>
-      <?php if ($notificationCount > 0): ?><span class="topbar-notification-count"><?= $notificationCount > 99 ? '99+' : $notificationCount ?></span><?php endif; ?>
-    </a>
+    <div class="topbar-notification-menu">
+      <button
+        type="button"
+        class="topbar-icon-btn topbar-notification js-notification-menu-toggle"
+        title="Notifications"
+        aria-label="Notifications<?= $notificationCount ? ' (' . $notificationCount . ' unread)' : '' ?>"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="topbar-notification-dropdown"
+      >
+        <i class="fa fa-bell" aria-hidden="true"></i>
+        <?php if ($notificationCount > 0): ?><span class="topbar-notification-count"><?= $notificationCount > 99 ? '99+' : $notificationCount ?></span><?php endif; ?>
+      </button>
+
+      <div class="topbar-notification-dropdown" id="topbar-notification-dropdown" role="dialog" aria-label="Recent notifications" hidden>
+        <div class="topbar-notification-header">
+          <span>
+            <strong>Notifications</strong>
+            <small class="js-notification-summary"><?= $notificationCount > 0 ? $notificationCount . ' unread' : 'You are all caught up' ?></small>
+          </span>
+          <?php if ($notificationCount > 0): ?>
+            <button type="button" class="topbar-notification-read-all js-notification-read-all">Mark all read</button>
+          <?php endif; ?>
+        </div>
+
+        <div class="topbar-notification-list">
+          <?php if (!$topbarNotifications): ?>
+            <div class="topbar-notification-empty">
+              <i class="fa-regular fa-bell-slash" aria-hidden="true"></i>
+              <strong>No notifications</strong>
+              <span>New alerts will appear here.</span>
+            </div>
+          <?php endif; ?>
+
+          <?php foreach ($topbarNotifications as $notification): ?>
+            <?php
+              $notificationType = (string) ($notification['notification_type'] ?? 'general');
+              $notificationIcon = $notificationType === 'low_stock' ? 'fa-box-open' : (in_array($notificationType, ['order', 'order_void'], true) ? 'fa-receipt' : 'fa-bell');
+              $notificationHref = '';
+              if (($notification['entity_type'] ?? '') === 'inventory') {
+                  $notificationHref = is_admin() ? 'inventory.php' : (is_manager() ? 'manager_settings.php' : 'items.php');
+              } elseif (($notification['entity_type'] ?? '') === 'order') {
+                  $notificationHref = 'order_list.php?scope=all&amp;search=' . (int) ($notification['entity_id'] ?? 0);
+              }
+              $notificationTag = $notificationHref !== '' ? 'a' : 'div';
+            ?>
+            <<?= $notificationTag ?>
+              class="topbar-notification-item<?= empty($notification['is_read']) ? ' is-unread' : '' ?>"
+              <?php if ($notificationHref !== ''): ?>href="<?= $notificationHref ?>"<?php endif; ?>
+            >
+              <span class="topbar-notification-icon"><i class="fa <?= $notificationIcon ?>" aria-hidden="true"></i></span>
+              <span class="topbar-notification-copy">
+                <strong><?= htmlspecialchars(ucwords(str_replace('_', ' ', $notificationType))) ?></strong>
+                <span><?= htmlspecialchars((string) ($notification['message'] ?? '')) ?></span>
+                <time datetime="<?= htmlspecialchars(date('c', strtotime((string) $notification['created_at']))) ?>"><?= htmlspecialchars(date('M j, g:i A', strtotime((string) $notification['created_at']))) ?></time>
+              </span>
+              <?php if (empty($notification['is_read'])): ?><span class="topbar-notification-unread" aria-label="Unread"></span><?php endif; ?>
+            </<?= $notificationTag ?>>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </div>
 
     <div class="topbar-profile-menu">
       <button
@@ -167,6 +221,7 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
               <span>Settings</span>
             </a>
           <?php endif; ?>
+          <button type="button" class="kape-guide-menu-item" data-open-guide role="menuitem" aria-haspopup="dialog" aria-controls="kapeGuide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 5v15M12 5C8 2 3 3 3 3v15s5-1 9 2c4-3 9-2 9-2V3s-5-1-9 2Z"/></svg><span>Guide</span></button>
           <a href="logout.php" class="topbar-dropdown-logout" role="menuitem"
              data-confirm="Are you sure you want to log out of Kape Agosto?"
              data-confirm-title="Confirm Logout"
@@ -180,6 +235,84 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
   </div>
 </div>
 <script>
+  (function () {
+    const menu = document.querySelector('.topbar-notification-menu');
+    const toggle = menu?.querySelector('.js-notification-menu-toggle');
+    const dropdown = menu?.querySelector('.topbar-notification-dropdown');
+    const readAll = menu?.querySelector('.js-notification-read-all');
+
+    if (!menu || !toggle || !dropdown) return;
+
+    function setMenuOpen(open) {
+      const shouldOpen = Boolean(open);
+      dropdown.hidden = !shouldOpen;
+      menu.classList.toggle('is-open', shouldOpen);
+      toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    }
+
+    toggle.addEventListener('click', function () {
+      setMenuOpen(dropdown.hidden);
+    });
+
+    toggle.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setMenuOpen(true);
+        dropdown.querySelector('button, a')?.focus();
+      }
+    });
+
+    readAll?.addEventListener('click', async function () {
+      readAll.disabled = true;
+      const finishLoading = window.KapeLoading?.start({ label: 'Updating notifications...', delay: 350 });
+
+      try {
+        const response = await fetch('notifications.php', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) throw new Error('Unable to mark notifications as read.');
+
+        menu.querySelector('.topbar-notification-count')?.remove();
+        menu.querySelectorAll('.topbar-notification-item.is-unread').forEach(function (item) {
+          item.classList.remove('is-unread');
+          item.querySelector('.topbar-notification-unread')?.remove();
+        });
+
+        const summary = menu.querySelector('.js-notification-summary');
+        if (summary) summary.textContent = 'You are all caught up';
+        toggle.setAttribute('aria-label', 'Notifications');
+        readAll.remove();
+      } catch (error) {
+        readAll.disabled = false;
+        readAll.textContent = 'Try again';
+      } finally {
+        finishLoading?.();
+      }
+    });
+
+    dropdown.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuOpen(false);
+        toggle.focus();
+      }
+    });
+
+    document.addEventListener('click', function (event) {
+      if (!menu.contains(event.target)) setMenuOpen(false);
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !dropdown.hidden) {
+        setMenuOpen(false);
+        toggle.focus();
+      }
+    });
+  })();
+
   (function () {
     const menu = document.querySelector('.topbar-profile-menu');
     const toggle = menu?.querySelector('.js-profile-menu-toggle');
@@ -213,6 +346,11 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
         event.preventDefault();
         setMenuOpen(true, event.key === 'ArrowUp' ? 'last' : 'first');
       }
+    });
+
+    dropdown.querySelector('[data-open-guide]')?.addEventListener('click', function () {
+      setMenuOpen(false);
+      toggle.focus();
     });
 
     dropdown.addEventListener('keydown', function (event) {
@@ -259,13 +397,26 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
 
   (function () {
     const sidebar = document.getElementById('sidebar');
-    const toggle = document.querySelector('.js-sidebar-toggle');
+    const toggles = Array.from(document.querySelectorAll('.js-sidebar-toggle'));
     const closeControls = document.querySelectorAll('.js-sidebar-close');
     const tabletQuery = window.matchMedia('(max-width: 1100px)');
     const collapseStorageKey = 'kapeSidebarCollapsed';
-    const toggleIcon = toggle?.querySelector('i');
+    let resizeTimer = 0;
 
-    if (!sidebar || !toggle) return;
+    if (!sidebar || !toggles.length) return;
+
+    function suppressShellTransitionsDuringResize() {
+      document.documentElement.classList.add('shell-is-resizing');
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(function () {
+        document.documentElement.classList.remove('shell-is-resizing');
+      }, 120);
+    }
+
+    window.addEventListener('resize', suppressShellTransitionsDuringResize, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', suppressShellTransitionsDuringResize, { passive: true });
+    }
 
     function savedCollapsedState() {
       try {
@@ -286,18 +437,25 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
     function updateToggleState() {
       if (tabletQuery.matches) {
         const isOpen = sidebar.classList.contains('active');
-        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        toggle.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
-        toggle.title = isOpen ? 'Close navigation' : 'Open navigation';
-        if (toggleIcon) toggleIcon.className = isOpen ? 'fa fa-xmark' : 'fa fa-bars';
+        toggles.forEach(function (toggle) {
+          const isInsideSidebar = toggle.classList.contains('sidebar-toggle');
+          toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+          toggle.setAttribute('aria-label', isInsideSidebar && isOpen ? 'Close navigation' : 'Open navigation');
+          toggle.title = isInsideSidebar && isOpen ? 'Close navigation' : 'Open navigation';
+          const icon = toggle.querySelector('i');
+          if (icon) icon.className = 'fa fa-bars';
+        });
         return;
       }
 
       const isCollapsed = document.body.classList.contains('sidebar-collapsed');
-      toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
-      toggle.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
-      toggle.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
-      if (toggleIcon) toggleIcon.className = isCollapsed ? 'fa fa-angles-right' : 'fa fa-bars';
+      toggles.forEach(function (toggle) {
+        toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+        toggle.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        toggle.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+        const icon = toggle.querySelector('i');
+        if (icon) icon.className = 'fa fa-bars';
+      });
 
       sidebar.querySelectorAll('a[data-tooltip]').forEach(function (link) {
         const label = link.dataset.tooltip || '';
@@ -320,12 +478,14 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
     }
 
     setSidebarCollapsed(savedCollapsedState(), false);
-    toggle.addEventListener('click', function () {
-      if (tabletQuery.matches) {
-        setSidebarOpen(!sidebar.classList.contains('active'));
-      } else {
-        setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
-      }
+    toggles.forEach(function (toggle) {
+      toggle.addEventListener('click', function () {
+        if (tabletQuery.matches) {
+          setSidebarOpen(!sidebar.classList.contains('active'));
+        } else {
+          setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+        }
+      });
     });
 
     closeControls.forEach(function (control) {
@@ -386,6 +546,9 @@ $perfScriptVersion = is_file($perfScriptPath) ? filemtime($perfScriptPath) : tim
     }
   })();
 </script>
+<script src="<?= htmlspecialchars(kape_asset_url('scripts/account-status.js') . '?v=' . filemtime(dirname(__DIR__) . '/public/scripts/account-status.js')) ?>" data-status-url="<?= htmlspecialchars(kape_asset_url('account_status.php')) ?>" data-login-url="<?= htmlspecialchars(kape_asset_url('login.php')) ?>" data-paused-url="<?= htmlspecialchars(kape_asset_url('account_paused.php')) ?>"></script>
 <script src="<?= htmlspecialchars($scriptsBase . 'live-reload.js') ?>"></script>
 <script src="<?= htmlspecialchars($scriptsBase . 'confirm.js?v=' . $confirmScriptVersion) ?>" defer></script>
 <script src="<?= htmlspecialchars($scriptsBase . 'perf.js?v=' . $perfScriptVersion) ?>" defer></script>
+
+<?php require_once dirname(__DIR__) . '/public/partials/user_guide.php'; ?>

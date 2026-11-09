@@ -42,6 +42,12 @@ $order_items = $items->fetchAll();
     <p><strong>Customer:</strong> <?= htmlspecialchars($order['customer_name']) ?></p>
     <p><strong>Job status:</strong> <?= htmlspecialchars(ucwords(str_replace('_', ' ', $order['job_status'] ?? 'queued'))) ?></p>
     <p><strong>Service details:</strong> <?= nl2br(htmlspecialchars($order['service_details'] ?? '')) ?></p>
+    <?php if (($order['discount_type'] ?? 'none') !== 'none'): ?>
+        <p><strong>Subtotal before discount:</strong> PHP <?= number_format((float) ($order['subtotal'] ?? 0), 2) ?></p>
+        <?php if ((float) ($order['vat_exempt_amount'] ?? 0) > 0): ?><p><strong>VAT exemption:</strong> PHP <?= number_format((float) $order['vat_exempt_amount'], 2) ?></p><?php endif; ?>
+        <p><strong><?= in_array($order['discount_type'], ['senior', 'pwd'], true) ? 'Senior/PWD 20% discount' : 'Promo discount (' . number_format((float) $order['discount_rate'], 2) . '%)' ?>:</strong> PHP <?= number_format((float) ($order['discount_amount'] ?? 0), 2) ?></p>
+        <?php if (!empty($order['discount_id_number'])): ?><p><strong>Discount beneficiary:</strong> <?= htmlspecialchars($order['discount_customer_name'] ?? '') ?> (<?= htmlspecialchars(strtoupper($order['discount_beneficiary_type'] ?? '')) ?> ID <?= htmlspecialchars($order['discount_id_number']) ?>)</p><?php endif; ?>
+    <?php endif; ?>
     <p><strong>Total:</strong> ₱<?= number_format($order['total'], 2) ?></p>
     <p><strong>Date:</strong> <?= $order['created_at'] ?></p>
 

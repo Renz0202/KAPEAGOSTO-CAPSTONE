@@ -2,10 +2,13 @@
 session_start();
 require_once dirname(__DIR__, 2) . "/includes/db.php";
 require_once dirname(__DIR__, 2) . "/includes/auth.php";
+require_once dirname(__DIR__, 2) . '/includes/order_discounts.php';
+require_once dirname(__DIR__, 2) . '/includes/settings.php';
 require_login();
 require_transactions_available();
 
 $pdo = db();
+$reportTaxType = settings_value(settings_all($pdo), 'bir_tax_type');
 
 // --- Require admin permission for voiding ---
 $is_admin = is_admin();
@@ -97,11 +100,11 @@ if (!$is_admin && !$has_admin_override) {
         $admin_user_id = $_SESSION['user']['id'] ?? null;
       }
 
-      // Log notification for admin account (optional, only if table exists)
+      // Share order void events with managers as well as admins.
       try {
         $pdo->query("SELECT 1 FROM notifications LIMIT 1");
-        $notif_stmt = $pdo->prepare("INSERT INTO notifications (user_id, message, created_at) VALUES (?, ?, NOW())");
-        $notif_stmt->execute([$admin_user_id, "Order #$order_id has been voided by admin $admin_username"]);
+        $notif_stmt = $pdo->prepare("INSERT INTO notifications (user_id, notification_type, entity_type, entity_id, message, created_at) VALUES (NULL, 'order_void', 'order', ?, ?, NOW())");
+        $notif_stmt->execute([$order_id, "Order #$order_id has been voided by admin $admin_username"]);
       } catch (PDOException $e) {
         // Table does not exist, skip notification
       }
@@ -113,9 +116,10 @@ if (!$is_admin && !$has_admin_override) {
         $pdo->query("SELECT 1 FROM daily_sales_reports LIMIT 1");
         $pdo->query("SELECT 1 FROM daily_sales_items LIMIT 1");
 
-        $total_orders = $pdo->query("SELECT COUNT(*) FROM orders WHERE DATE(created_at)=CURDATE() AND status='completed'")->fetchColumn();
-        $total_sales = $pdo->query("SELECT COALESCE(SUM(total),0) FROM orders WHERE DATE(created_at)=CURDATE() AND status='completed'")->fetchColumn();
-        $sales_tax = round($total_sales * 0.12, 2);
+        $reportTotals = order_discount_report_totals($pdo, date('Y-m-d 00:00:00'), date('Y-m-d 00:00:00', strtotime('tomorrow')), $reportTaxType);
+        $total_orders = $reportTotals['total_orders'];
+        $total_sales = $reportTotals['total_sales'];
+        $sales_tax = $reportTotals['sales_tax'];
 
         $pdo->beginTransaction();
 
@@ -145,7 +149,7 @@ if (!$is_admin && !$has_admin_override) {
             i.name AS item_name,
             i.price,
             SUM(oi.qty) AS total_qty,
-            SUM(oi.subtotal) AS total_amount
+            SUM(oi.subtotal * CASE WHEN o.subtotal > 0 THEN o.total / o.subtotal ELSE 1 END) AS total_amount
           FROM order_items oi
           JOIN orders o ON oi.order_id = o.id
           JOIN items i ON oi.item_id = i.id

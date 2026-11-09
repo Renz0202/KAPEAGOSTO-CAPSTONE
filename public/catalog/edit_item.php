@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
 require_once dirname(__DIR__, 2) . '/includes/name_utils.php';
+require_once dirname(__DIR__, 2) . '/includes/inventory_requirements.php';
 require_admin();
 
 if (!is_admin()) {
@@ -14,7 +15,7 @@ if (!is_admin()) {
 }
 
 $pdo = db();
-$id = (int)($_GET['id'] ?? 0);
+$id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 if ($id <= 0) {
     header('Location: items.php');
     exit;
@@ -31,10 +32,13 @@ if (!$item) {
 }
 
 $categories = $pdo->query('SELECT id, name FROM categories ORDER BY name ASC')->fetchAll();
-$inventoryRecords = $pdo->query('SELECT id, sku, name, cup_size, unit FROM inventory ORDER BY name, cup_size')->fetchAll(PDO::FETCH_ASSOC);
+$inventoryRecords = $pdo->query('SELECT id, sku, name, cup_size, unit, material_type FROM inventory ORDER BY material_type, name, cup_size')->fetchAll(PDO::FETCH_ASSOC);
 $requirementStmt = $pdo->prepare('SELECT inventory_id, quantity_needed FROM item_requirements WHERE item_id = ?');
 $requirementStmt->execute([$id]);
 $requirementMap = $requirementStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+$recipeMetadataStmt = $pdo->prepare('SELECT source, notes FROM item_recipe_metadata WHERE item_id = ?');
+$recipeMetadataStmt->execute([$id]);
+$recipeMetadata = $recipeMetadataStmt->fetch(PDO::FETCH_ASSOC);
 $errors = [];
 
 function edit_item_image_src(?string $image): string {
@@ -106,11 +110,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($cup_size === '') {
         $errors[] = 'Cup size is required.';
+    } elseif (!in_array($cup_size, ['12oz Hot', '16oz', '22oz'], true)) {
+        $errors[] = 'Choose 12oz Hot, 16oz, or 22oz.';
     }
     if ($price <= 0) {
         $errors[] = 'Price must be greater than zero.';
     }
 
+    try {
+        $recipe = inventory_service_validate_recipe($pdo, $postedRequirements, $cup_size, $name);
+    } catch (InvalidArgumentException $e) {
+        $errors[] = $e->getMessage();
+    }
     if (!$errors) {
         try {
             $image = replace_item_image($image);
@@ -120,20 +131,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
-        $stmt = $pdo->prepare('UPDATE items SET sku = ?, name = ?, category_id = ?, price = ?, cup_size = ?, image = ? WHERE id = ?');
-        $stmt->execute([$sku, $name, $category_id, $price, $cup_size, $image, $id]);
-        $pdo->prepare('DELETE FROM item_requirements WHERE item_id = ?')->execute([$id]);
-        $insertRequirement = $pdo->prepare('INSERT INTO item_requirements (item_id, inventory_id, quantity_needed) VALUES (?, ?, ?)');
-        foreach ($postedRequirements as $inventoryId => $quantityNeeded) {
-            if ((int) $inventoryId > 0 && is_numeric($quantityNeeded) && (float) $quantityNeeded > 0) {
-                $insertRequirement->execute([$id, (int) $inventoryId, (float) $quantityNeeded]);
-            }
+        try {
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare('UPDATE items SET sku = ?, name = ?, category_id = ?, price = ?, cup_size = ?, image = ? WHERE id = ?');
+            $stmt->execute([$sku, $name, $category_id, $price, $cup_size, $image, $id]);
+            inventory_service_save_recipe($pdo, $id, $recipe);
+            $pdo->commit();
+            $_SESSION['flash'] = 'Item and raw material recipe updated successfully.';
+            $_SESSION['flash_type'] = 'success';
+            header('Location: items.php');
+            exit;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log('Item recipe update failed: ' . $e->getMessage());
+            $errors[] = 'The item and recipe could not be saved. Check for a duplicate SKU and try again.';
         }
-        $_SESSION['flash'] = 'Item updated successfully.';
-        header('Location: items.php');
-        exit;
     }
-
     $item['name'] = $name;
     $item['sku'] = $sku;
     $item['category_id'] = $category_id;
@@ -141,6 +154,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $item['cup_size'] = $cup_size;
     $item['image'] = $image;
     $requirementMap = $postedRequirements;
+
+    if (!empty($_POST['inline_edit'])) {
+        $_SESSION['flash'] = implode(' ', $errors);
+        $_SESSION['flash_type'] = 'error';
+        $_SESSION['item_edit_form'] = [
+            'id' => $id,
+            'sku' => $sku,
+            'name' => $name,
+            'category_id' => $category_id,
+            'price' => $price,
+            'cup_size' => $cup_size,
+            'requirements' => $postedRequirements,
+        ];
+        header('Location: items.php?edit=' . $id);
+        exit;
+    }
 }
 
 $previewSrc = edit_item_image_src($item['image'] ?? null);
@@ -203,11 +232,11 @@ $previewSrc = edit_item_image_src($item['image'] ?? null);
       </div>
 
       <div class="form-group">
-        <label for="cup_size">Cup Size</label>
+        <label for="cup_size">Cup Size and Temperature</label>
         <select id="cup_size" name="cup_size" required>
-          <option value="12oz Hot" <?= $item['cup_size'] === '12oz Hot' ? 'selected' : '' ?>>12oz Hot</option>
-          <option value="16oz" <?= $item['cup_size'] === '16oz' ? 'selected' : '' ?>>16oz</option>
-          <option value="22oz" <?= $item['cup_size'] === '22oz' ? 'selected' : '' ?>>22oz</option>
+          <option value="12oz Hot">12oz Hot</option>
+          <option value="16oz" <?= in_array($item['cup_size'], ['16oz Cold', '16oz'], true) ? 'selected' : '' ?>>16oz</option>
+          <option value="22oz" <?= in_array($item['cup_size'], ['22oz Cold', '22oz'], true) ? 'selected' : '' ?>>22oz</option>
         </select>
       </div>
 
@@ -221,13 +250,18 @@ $previewSrc = edit_item_image_src($item['image'] ?? null);
         <input id="image" type="file" name="image" accept="image/*" onchange="previewItemImage(event)">
       </div>
 
-      <div class="form-group full">
-        <label>Inventory Recipe (quantity used per sold item)</label>
+      <div class="form-group full" data-item-recipe>
+        <label>Recipe Materials (quantity used per sold item)</label>
+        <p data-recipe-scope aria-live="polite">Set quantities for one serving of the selected size.</p>
+        <p>Enter the ingredient amounts needed for this size in g or ml. Blank packaging uses one matching cup, lid, and straw or stirrer. Materials are deducted when the order is marked Done.</p>
+        <?php if (($recipeMetadata['source'] ?? '') === 'generated'): ?>
+          <p class="recipe-estimate-note" role="status"><?= htmlspecialchars($recipeMetadata['notes'] ?? 'Generated starter estimate.') ?> Saving records your reviewed recipe.</p>
+        <?php endif; ?>
         <div class="cup-size-container">
           <?php if (!$inventoryRecords): ?><small>Add inventory records before configuring a recipe. Packaging fallback will be used meanwhile.</small><?php endif; ?>
           <?php foreach ($inventoryRecords as $inventoryRecord): ?>
-            <div class="cup-size-row">
-              <span><strong><?= htmlspecialchars($inventoryRecord['sku']) ?></strong> — <?= htmlspecialchars($inventoryRecord['name']) ?> <?= $inventoryRecord['cup_size'] ? '(' . htmlspecialchars($inventoryRecord['cup_size']) . ')' : '' ?></span>
+            <div class="cup-size-row" data-recipe-row data-recipe-type="<?= htmlspecialchars($inventoryRecord['material_type']) ?>" data-recipe-size="<?= htmlspecialchars(item_variant_inventory_cup_size($inventoryRecord['cup_size']) ?? '') ?>" data-recipe-kind="<?= htmlspecialchars(inventory_service_packaging_kind($inventoryRecord) ?? '') ?>" data-recipe-unit="<?= htmlspecialchars($inventoryRecord['unit']) ?>">
+              <span><strong><?= htmlspecialchars($inventoryRecord['sku']) ?> · <?= htmlspecialchars($inventoryRecord['unit']) ?></strong> — <?= htmlspecialchars($inventoryRecord['name']) ?> <?= $inventoryRecord['cup_size'] ? '(' . htmlspecialchars($inventoryRecord['cup_size']) . ')' : '' ?></span>
               <input type="number" min="0" step="0.01" name="requirements[<?= (int) $inventoryRecord['id'] ?>]" value="<?= htmlspecialchars((string) ($requirementMap[$inventoryRecord['id']] ?? '')) ?>" placeholder="0 <?= htmlspecialchars($inventoryRecord['unit']) ?>">
             </div>
           <?php endforeach; ?>
@@ -252,5 +286,6 @@ function previewItemImage(event) {
   }
 }
 </script>
+<script src="<?= htmlspecialchars(kape_asset_url('scripts/item-recipe.js') . '?v=' . filemtime(dirname(__DIR__) . '/scripts/item-recipe.js')) ?>" defer></script>
 </body>
 </html>

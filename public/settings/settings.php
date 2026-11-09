@@ -6,6 +6,7 @@ require_once dirname(__DIR__, 2) . '/includes/settings.php';
 require_admin();
 
 $pdo = db();
+require_once dirname(__DIR__, 2) . '/includes/ai_connection_check.php';
 $flash = '';
 $flashType = 'success';
 
@@ -39,6 +40,7 @@ function setting_field_value(array $settings, string $key): string
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>System Settings - Kape Agosto</title>
   <?php include dirname(__DIR__) . '/partials/stylesheets.php'; ?>
+  <link rel="stylesheet" href="<?= htmlspecialchars(kape_asset_url('css/settings-workspace.css') . '?v=' . filemtime(dirname(__DIR__) . '/css/settings-workspace.css')) ?>">
 </head>
 <body class="kape-settings-page">
 <?php include dirname(__DIR__, 2) . '/includes/sidebar.php'; ?>
@@ -55,7 +57,7 @@ function setting_field_value(array $settings, string $key): string
     <div>
       <span class="settings-kicker">Control Center</span>
       <h1>System Settings</h1>
-      <p>Update business details, receipt copy, footer links, and shared labels from one clean place.</p>
+      <p>Manage business details, receipts, shared settings, and database backup and recovery.</p>
     </div>
     <a class="settings-back" href="dashboard.php">
       <i class="fa fa-arrow-left"></i>
@@ -70,7 +72,77 @@ function setting_field_value(array $settings, string $key): string
     </div>
   <?php endif; ?>
 
+  <section class="settings-panel" aria-labelledby="settings-backup-title">
+    <div class="settings-panel-intro">
+      <span class="settings-panel-icon"><i class="fa fa-database" aria-hidden="true"></i></span>
+      <h2 id="settings-backup-title">Backup &amp; Restore</h2>
+      <p>Protect system data and manage database recovery. Administrator access only.</p>
+    </div>
+    <div class="settings-grid">
+      <div class="settings-span-2">
+        <p>Create database backups, review available files and backup schedules, or restore a saved SQL backup.</p>
+        <div class="settings-test-links">
+          <a href="backup_restore.php" class="settings-test-link"><i class="fa fa-database" aria-hidden="true"></i> Open Backup &amp; Restore</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <form method="post" class="settings-form" autocomplete="off">
+    <section class="settings-panel">
+      <div class="settings-panel-intro">
+        <span class="settings-panel-icon"><i class="fa fa-file-invoice"></i></span>
+        <h2>BIR Registration</h2>
+        <p>Copy the details from your BIR Certificate of Registration (Form 2303).</p>
+      </div>
+      <div class="settings-grid">
+        <label class="settings-span-2">
+          <span>BIR Registered Name</span>
+          <input type="text" name="bir_registered_name" value="<?= setting_field_value($settings, 'bir_registered_name') ?>" maxlength="250" placeholder="Registered taxpayer name on your certificate">
+        </label>
+        <label>
+          <span>Tax Registration Type</span>
+          <select name="bir_tax_type">
+            <option value="">Not configured</option>
+            <option value="vat" <?= settings_value($settings, 'bir_tax_type') === 'vat' ? 'selected' : '' ?>>VAT</option>
+            <option value="non_vat" <?= settings_value($settings, 'bir_tax_type') === 'non_vat' ? 'selected' : '' ?>>NON-VAT</option>
+          </select>
+        </label>
+        <label>
+          <span>Taxpayer Identification Number (TIN)</span>
+          <input type="text" name="bir_tin" value="<?= setting_field_value($settings, 'bir_tin') ?>" inputmode="numeric" maxlength="11" pattern="[0-9]{3}-[0-9]{3}-[0-9]{3}" placeholder="000-000-000" title="Use the format 000-000-000" aria-describedby="bir-tin-help">
+          <small id="bir-tin-help">Format: 000-000-000. Enter the branch code separately.</small>
+        </label>
+        <label>
+          <span>Branch Code</span>
+          <input type="text" name="bir_branch_code" value="<?= setting_field_value($settings, 'bir_branch_code') ?>" inputmode="numeric" pattern="[0-9]{3,5}" maxlength="5" placeholder="As shown on your BIR certificate">
+        </label>
+        <div class="settings-help settings-span-2">These details appear on receipt printouts. Saving them does not register or verify your business with the BIR. VAT receipts show the included 12% VAT for regular menu sales; menu prices must already include VAT. NON-VAT receipts do not calculate VAT. Special VAT-exempt and zero-rated transactions are not supported by this checkout.</div>
+      </div>
+    </section>
+    <section class="settings-panel">
+      <div class="settings-panel-intro">
+        <span class="settings-panel-icon"><i class="fa fa-percent"></i></span>
+        <h2>POS Promotional Discount</h2>
+        <p>Set the approved promo rate and optional date range. POS can apply the promo only during those dates.</p>
+      </div>
+      <div class="settings-grid">
+        <label>
+          <span>Promo Rate (%)</span>
+          <input type="number" name="promo_discount_percent" min="0" max="100" step="0.01" value="<?= setting_field_value($settings, 'promo_discount_percent') ?>" required>
+          <small>Enter 0 to turn off the promo.</small>
+        </label>
+        <label>
+          <span>Promo Start Date (inclusive)</span>
+          <input type="date" name="promo_discount_start_date" value="<?= setting_field_value($settings, 'promo_discount_start_date') ?>">
+        </label>
+        <label>
+          <span>Promo End Date (inclusive)</span>
+          <input type="date" name="promo_discount_end_date" value="<?= setting_field_value($settings, 'promo_discount_end_date') ?>">
+        </label>
+        <div class="settings-help settings-span-2">Leave both dates blank for a promo with no date limit. If you set dates, both are required; the promo remains active through the end date.</div>
+      </div>
+    </section>
     <section class="settings-panel">
       <div class="settings-panel-intro">
         <span class="settings-panel-icon"><i class="fa fa-store"></i></span>
@@ -82,6 +154,11 @@ function setting_field_value(array $settings, string $key): string
         <label>
           <span>Business Name</span>
           <input type="text" name="business_name" value="<?= setting_field_value($settings, 'business_name') ?>" required>
+        </label>
+        <label>
+          <span>Owner's Complete Name</span>
+          <input type="text" name="owner_name" value="<?= setting_field_value($settings, 'owner_name') ?>" maxlength="150" autocomplete="name" placeholder="Enter the owner's full name">
+          <small>This name appears in the owner approval signature area on printed reports.</small>
         </label>
         <label>
           <span>Tagline</span>
@@ -245,11 +322,11 @@ function setting_field_value(array $settings, string $key): string
       </div>
     </section>
 
-    <section class="settings-panel">
+    <section class="settings-panel settings-ai-panel">
       <div class="settings-panel-intro">
         <span class="settings-panel-icon"><i class="fa fa-wand-magic-sparkles"></i></span>
-        <h2>A.I. Sales Analytics</h2>
-        <p>Optionally connect OpenAI for generated operational recommendations. Forecasts, turnover, movement classes, and accuracy continue to run locally.</p>
+        <h2>AI Sales Analytics</h2>
+        <p>Optionally connect OpenAI or Gemini for generated operational recommendations. Forecasts, turnover, movement classes, and accuracy continue to run locally.</p>
       </div>
 
       <div class="settings-grid">
@@ -269,23 +346,22 @@ function setting_field_value(array $settings, string $key): string
           </select>
         </label>
         <label>
-          <span>AI Model</span>
-          <input type="text" name="ai_model" value="<?= setting_field_value($settings, 'ai_model') ?>" placeholder="gpt-4o-mini">
+          <span>AI Model (optional)</span>
+          <input type="text" name="ai_model" value="<?= setting_field_value($settings, 'ai_model') ?>" placeholder="Automatic provider default">
         </label>
+        
         <label class="settings-span-2">
           <span>AI API Key</span>
           <input type="password" name="ai_api_key" value="" placeholder="<?= $aiApiKeyStored ? 'Stored API key detected. Leave blank to keep it.' : 'Paste your AI API key' ?>" autocomplete="new-password">
           <small><?= $aiApiKeyStored ? 'An API key is currently saved. Enter a new key only to replace it.' : 'The key is saved in system settings and is not displayed again after saving.' ?></small>
         </label>
+        <?php include dirname(__DIR__) . '/partials/ai_connection_status.php'; ?>
         <label class="settings-toggle settings-span-2">
           <input type="hidden" name="clear_ai_api_key" value="0">
           <input type="checkbox" name="clear_ai_api_key" value="1">
           <span>Clear stored AI API key on save</span>
         </label>
-        <div class="settings-help settings-span-2">
-          <i class="fa fa-circle-info"></i>
-          <span>Dashboard forecasting works without an API key. When enabled with an OpenAI key, aggregate operational metrics are sent through the Responses API at most once every six hours to produce one recommendation.</span>
-        </div>
+        <details class="settings-span-2 ai-settings-help"><summary>How AI recommendations work</summary><p>Forecasts run locally. The selected provider generates recommendations from sales summaries, only when you click Generate, with results cached for six hours. API usage and limits depend on your provider.</p></details>
       </div>
     </section>
 
@@ -299,6 +375,22 @@ function setting_field_value(array $settings, string $key): string
   </form>
 </main>
 
+<script>
+(() => {
+  const tin = document.querySelector('input[name="bir_tin"]');
+  if (!tin) return;
+  const formatTin = () => {
+    const cursor = tin.selectionStart;
+    const digitsBeforeCursor = tin.value.slice(0, cursor).replace(/[^0-9]/g, '').length;
+    const digits = tin.value.replace(/[^0-9]/g, '').slice(0, 9);
+    tin.value = digits.match(/.{1,3}/g)?.join('-') || '';
+    const position = Math.min(tin.value.length, digitsBeforeCursor + Math.floor(Math.max(0, digitsBeforeCursor - 1) / 3));
+    tin.setSelectionRange(position, position);
+  };
+  tin.addEventListener('input', formatTin);
+  formatTin();
+})();
+</script>
 <?php include dirname(__DIR__) . '/partials/admin_footer.php'; ?>
 </body>
 </html>

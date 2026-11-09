@@ -1,6 +1,7 @@
 <?php
 require_once dirname(__DIR__, 2) . '/includes/db.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
+require_once dirname(__DIR__, 2) . '/includes/management_lists.php';
 require_admin();
 
 $pdo = db();
@@ -53,8 +54,9 @@ function category_image_src(?string $image): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KAPE AGOSTO - Manage Category</title>
   <?php include dirname(__DIR__) . '/partials/stylesheets.php'; ?>
+  <link rel="stylesheet" href="<?= htmlspecialchars(kape_asset_url('css/management-workspace.css')) ?>?v=<?= filemtime(dirname(__DIR__) . '/css/management-workspace.css') ?>">
 </head>
-<body class="kape-catalog-categories">
+<body class="kape-catalog-categories compact-management-page">
 <?php include dirname(__DIR__, 2) . '/includes/sidebar.php'; ?>
 <?php include dirname(__DIR__, 2) . '/includes/topbar.php'; ?>
 
@@ -70,10 +72,6 @@ function category_image_src(?string $image): string {
         <span><strong><?= number_format($totalCategories) ?></strong> Categories</span>
         <span><strong><?= number_format($totalLinkedItems) ?></strong> Linked Items</span>
       </div>
-      <button type="button" class="category-primary-action js-open-create-category" aria-haspopup="dialog" aria-controls="createCategoryModal">
-        <i class="fa fa-plus" aria-hidden="true"></i>
-        Add New Category
-      </button>
     </div>
   </section>
 
@@ -83,71 +81,44 @@ function category_image_src(?string $image): string {
     </div>
   <?php endif; ?>
 
-  <section class="category-table-panel">
+  <section class="category-table-panel management-list-panel" data-compact-list="categories" data-page-param="category_page" data-list-noun="categories">
     <div class="category-panel-header">
-      <div>
-        <span class="panel-eyebrow">Inventory Setup</span>
-        <h2>Category List</h2>
+      <div><span class="panel-eyebrow">Menu Setup</span><h2>Category List</h2></div>
+      <div class="category-panel-actions">
+        <span class="panel-pill" data-compact-count><?= number_format($totalCategories) ?> records</span>
+        <button type="button" class="category-primary-action js-open-create-category" aria-haspopup="dialog" aria-controls="createCategoryModal"><i class="fa fa-plus" aria-hidden="true"></i> Add New Category</button>
       </div>
-      <span class="panel-pill"><?= number_format($totalCategories) ?> record<?= $totalCategories === 1 ? '' : 's' ?></span>
     </div>
-
-    <div class="category-table-wrap">
-      <table class="category-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Category Name</th>
-            <th>Category Image</th>
-            <th>Linked Items</th>
-            <th>Action</th>
-          </tr>
-        </thead>
+    <form method="get" class="management-list-filters category-list-filters" data-compact-filters>
+      <label class="management-search-field" for="categoryListSearch"><span>Search categories</span><input id="categoryListSearch" type="search" name="category_search" placeholder="Category name or ID..." aria-controls="categoryListTable" autocomplete="off" data-compact-search></label>
+      <label for="categoryUsageFilter"><span>Linked items</span><select id="categoryUsageFilter" name="category_usage" data-compact-filter="usage"><option value="">All categories</option><option value="linked">With linked items</option><option value="empty">Without linked items</option></select></label>
+      <button type="button" class="management-reset-button" data-compact-reset>Reset</button>
+    </form>
+    <div class="category-table-wrap management-table-frame" tabindex="0" role="region" aria-label="Category list">
+      <table class="category-table management-compact-table" id="categoryListTable">
+        <thead><tr><th scope="col">Category</th><th scope="col">Linked Items</th><th scope="col">Actions</th></tr></thead>
         <tbody>
-          <?php if (!empty($categories)): ?>
-            <?php foreach ($categories as $index => $category): ?>
-              <?php
-                $categoryId = (int)$category['id'];
-                $categoryName = trim((string)$category['name']);
-                $imageSrc = category_image_src($category['image'] ?? null);
-                $confirmDelete = "Delete category '" . $categoryName . "'?";
-              ?>
-              <tr>
-                <td class="category-id">#<?= $index + 1 ?></td>
-                <td>
-                  <div class="category-name-cell">
-                    <strong><?= htmlspecialchars($categoryName) ?></strong>
-                    <span>ID <?= $categoryId ?></span>
-                  </div>
-                </td>
-                <td>
-                  <div class="category-image-preview">
-                    <img src="<?= htmlspecialchars($imageSrc) ?>" alt="<?= htmlspecialchars($categoryName) ?> category image">
-                  </div>
-                </td>
-                <td>
-                  <span class="category-count-chip"><?= number_format((int)$category['item_count']) ?> item<?= (int)$category['item_count'] === 1 ? '' : 's' ?></span>
-                </td>
-                <td>
-                  <div class="category-actions">
-                    <a href="edit_category.php?id=<?= $categoryId ?>" class="category-action-btn edit" title="Edit category" aria-label="Edit <?= htmlspecialchars($categoryName) ?>">
-                      <i class="fa fa-pen-to-square"></i>
-                    </a>
-                    <a href="delete_category.php?id=<?= $categoryId ?>" class="category-action-btn delete" title="Delete category" aria-label="Delete <?= htmlspecialchars($categoryName) ?>" data-confirm="<?= htmlspecialchars($confirmDelete, ENT_QUOTES) ?>" data-confirm-title="Delete Category" data-confirm-type="danger">
-                      <i class="fa fa-trash"></i>
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          <?php else: ?>
-            <tr>
-              <td colspan="5" class="category-empty">No categories found. Create your first category.</td>
-            </tr>
-          <?php endif; ?>
+          <?php foreach ($categories as $category):
+            $categoryId = (int)$category['id'];
+            $categoryName = trim((string)$category['name']);
+            $imageSrc = category_image_src($category['image'] ?? null);
+            $itemCount = (int)$category['item_count'];
+            $confirmDelete = "Delete category '" . $categoryName . "'?";
+          ?>
+          <tr data-compact-row data-row-id="<?= $categoryId ?>" data-usage="<?= $itemCount ? 'linked' : 'empty' ?>" data-search="<?= management_list_escape($categoryName . ' ID ' . $categoryId) ?>">
+            <td data-label="Category"><div class="management-identity-cell"><div class="category-image-preview"><img src="<?= management_list_escape($imageSrc) ?>" alt="" loading="lazy"></div><div class="category-name-cell"><strong><?= management_list_escape($categoryName) ?></strong><span>ID <?= $categoryId ?></span></div></div></td>
+            <td data-label="Linked items"><a class="category-count-chip" href="items.php?item_category=<?= $categoryId ?>" aria-label="View <?= $itemCount ?> linked items in <?= management_list_escape($categoryName) ?>"><?= number_format($itemCount) ?> item<?= $itemCount === 1 ? '' : 's' ?></a></td>
+            <td data-label="Actions"><div class="category-actions">
+              <a href="edit_category.php?id=<?= $categoryId ?>" class="category-action-btn edit" title="Edit category" aria-label="Edit <?= management_list_escape($categoryName) ?>"><i class="fa fa-pen-to-square" aria-hidden="true"></i></a>
+              <a href="delete_category.php?id=<?= $categoryId ?>" class="category-action-btn delete" title="Delete category" aria-label="Delete <?= management_list_escape($categoryName) ?>" data-confirm="<?= management_list_escape($confirmDelete) ?>" data-confirm-title="Delete Category" data-confirm-type="danger"><i class="fa fa-trash" aria-hidden="true"></i></a>
+            </div></td>
+          </tr>
+          <?php endforeach; ?>
+          <tr data-compact-empty <?= $categories ? 'hidden' : '' ?>><td colspan="3" class="category-empty"><?= $categories ? 'No categories match your filters.' : 'No categories found. Create your first category.' ?></td></tr>
         </tbody>
       </table>
     </div>
+    <?= management_list_pager('Categories') ?>
   </section>
 </main>
 
@@ -275,5 +246,6 @@ function category_image_src(?string $image): string {
   }
 })();
 </script>
+<script src="<?= htmlspecialchars(kape_asset_url('scripts/management-list.js')) ?>?v=<?= filemtime(dirname(__DIR__) . '/scripts/management-list.js') ?>" defer></script>
 </body>
 </html>

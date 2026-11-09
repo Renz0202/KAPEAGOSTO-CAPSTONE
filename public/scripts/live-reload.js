@@ -30,6 +30,7 @@
   function softReload(){
     if (reloading) return;
     reloading = true;
+    window.KapeLoading?.navigate('Refreshing workspace...');
 
     try {
       var href = new URL(location.href);

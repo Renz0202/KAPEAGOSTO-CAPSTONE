@@ -1,6 +1,8 @@
 # Ignore environment secrets and local config
 .env
 .env.local
+/config/drive-private/
+/config/recaptcha.local.php
 
 # Composer vendor can be regenerated
 /vendor/

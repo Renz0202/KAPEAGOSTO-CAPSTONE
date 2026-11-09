@@ -4,9 +4,12 @@ ob_start();
 
 require_once __DIR__ . "/../../includes/db.php";
 require_once __DIR__ . "/../../includes/auth.php";
+require_once __DIR__ . '/../../includes/order_discounts.php';
+require_once __DIR__ . '/../../includes/settings.php';
 require_capability('export_reports');
 
 $pdo = db();
+$reportTaxType = settings_value(settings_all($pdo), 'bir_tax_type');
 
 // Helpers
 function is_valid_date($d) { return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d); }
@@ -49,7 +52,7 @@ if (isset($_GET['autogen']) && $_GET['autogen'] === '1') {
                     i.name AS item_name,
                     i.price,
                     SUM(oi.qty) AS total_qty,
-                    SUM(oi.subtotal) AS total_amount
+                    SUM(oi.subtotal * CASE WHEN o.subtotal > 0 THEN o.total / o.subtotal ELSE 1 END) AS total_amount
                 FROM order_items oi
                 JOIN orders o ON oi.order_id = o.id
                 JOIN items i ON oi.item_id = i.id
@@ -60,12 +63,10 @@ if (isset($_GET['autogen']) && $_GET['autogen'] === '1') {
 
             // Only create a report when there are completed sales for the day
             if ($dayItems && count($dayItems) > 0) {
-                $ordersCountStmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE DATE(created_at)=? AND status='completed'");
-                $ordersCountStmt->execute([$d]);
-                $total_orders = (int)$ordersCountStmt->fetchColumn();
-
-                $total_sales = array_sum(array_map(function($r){ return (float)$r['total_amount']; }, $dayItems));
-                $sales_tax   = round($total_sales * 0.12, 2);
+                $reportTotals = order_discount_report_totals($pdo, $d . ' 00:00:00', date('Y-m-d 00:00:00', strtotime($d . ' +1 day')), $reportTaxType);
+                $total_orders = $reportTotals['total_orders'];
+                $total_sales = $reportTotals['total_sales'];
+                $sales_tax = $reportTotals['sales_tax'];
 
                 // Insert report
                 $insRep = $pdo->prepare("INSERT INTO daily_sales_reports (report_date, generated_by, total_sales, total_orders, sales_tax, notes)

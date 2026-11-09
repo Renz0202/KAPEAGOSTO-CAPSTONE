@@ -51,6 +51,7 @@ try {
         order_done_redirect('unpaid', $orderId);
     }
 
+    transaction_issue_invoice($pdo, $orderId);
     inventory_service_complete_order($pdo, $orderId, (int) ($_SESSION['user']['id'] ?? 0) ?: null);
 
     $update = $pdo->prepare("UPDATE orders SET status = 'completed', job_status = 'completed' WHERE id = ? AND TRIM(LOWER(status)) = 'pending'");

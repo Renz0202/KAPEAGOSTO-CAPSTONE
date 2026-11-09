@@ -1,0 +1,254 @@
+/* Shared compact management workspace; existing business actions stay in their modules. */
+body.compact-management-page :is(.user-management-page, .item-page, .dashboard-page, .dashboard-tabs, .category-page) { min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+body.compact-management-page:not(.cashier-pos-shell) main.content > :is(.dashboard-heading, .user-page-heading, .item-page-heading, .category-page-heading, .reports-hero) { min-height: 0; margin-bottom: 0; padding: 22px 26px; gap: 22px; border-radius: 12px; }
+body.compact-management-page:not(.cashier-pos-shell) main.content > :is(.dashboard-heading, .user-page-heading, .item-page-heading, .category-page-heading, .reports-hero) h1 { font-size: clamp(1.75rem, 2.5vw, 2.35rem); line-height: 1.12; }
+body.compact-management-page:not(.cashier-pos-shell) main.content > :is(.dashboard-heading, .user-page-heading, .item-page-heading, .category-page-heading, .reports-hero) [class*="-breadcrumb"] { margin-bottom: 7px; font-size: 0.68rem; }
+body.compact-management-page:not(.cashier-pos-shell) main.content > :is(.dashboard-heading, .user-page-heading, .item-page-heading, .category-page-heading, .reports-hero) > div:first-child > p:last-child { margin-top: 8px; font-size: 0.88rem; line-height: 1.45; }
+body.compact-management-page .dashboard-date-card { min-width: 160px; padding: 12px 16px; }
+body.compact-management-page .dashboard-date-card strong { font-size: 1.1rem; }
+body.compact-management-page .management-list-panel { min-width: 0; width: 100%; max-width: 100%; }
+body.compact-management-page :is(.user-panel-header, .item-panel-header, .category-panel-header) { padding: 16px 18px; gap: 14px; flex-wrap: wrap; }
+body.compact-management-page :is(.user-panel-header, .item-panel-header, .category-panel-header) h2 { font-size: 1.2rem; }
+body.compact-management-page :is(.user-panel-actions, .item-panel-actions, .category-panel-actions) { flex-wrap: wrap; gap: 10px; }
+body.compact-management-page .management-list-filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(140px, 1fr)) auto; align-items: end; gap: 12px; margin: 0; padding: 14px 18px; border-bottom: 1px solid #eadfd6; }
+body.compact-management-page .management-list-filters label { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; margin: 0; }
+body.compact-management-page .management-list-filters label > span { color: #7b665d; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+body.compact-management-page .management-list-filters :is(input, select) { width: 100%; min-width: 0; max-width: none; min-height: 42px; padding: 9px 11px; border: 1px solid #ddcdc3; border-radius: 6px; background: #fff; color: #432821; font: 400 0.88rem/1.3 Inter, "Segoe UI", Arial, sans-serif; }
+body.compact-management-page .management-list-filters :is(input, select):focus { outline: 2px solid #c9974b; outline-offset: 1px; }
+body.compact-management-page :is(.management-reset-button, .management-details-button, .management-pagination button, .management-dialog-close) { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 8px 11px; border: 1px solid #ddcdc3; border-radius: 6px; background: #fffaf5; color: #432821; font: 700 0.77rem/1.25 Inter, "Segoe UI", Arial, sans-serif; cursor: pointer; }
+body.compact-management-page .management-reset-button { min-height: 42px; }
+body.compact-management-page :is(.management-reset-button, .management-details-button, .management-pagination button, .management-dialog-close):focus-visible { outline: 3px solid #c9974b; outline-offset: 2px; }
+body.compact-management-page .management-pagination button:disabled { opacity: 0.45; cursor: default; }
+body.compact-management-page .management-details-button { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+body.compact-management-page .management-table-frame { width: 100%; max-width: 100%; max-height: min(620px, 66vh); overflow: auto; scrollbar-gutter: stable; scrollbar-color: #987665 #f4ede7; overscroll-behavior: contain; }
+body.compact-management-page .management-table-frame:focus-visible { outline: 3px solid #c9974b; outline-offset: -3px; }
+body.compact-management-page .management-table-frame .management-compact-table { width: 100%; min-width: 0; table-layout: fixed; font-size: 0.84rem; }
+body.compact-management-page .management-table-frame .management-compact-table :is(th, td) { padding: 9px 12px; overflow-wrap: anywhere; white-space: normal; }
+body.compact-management-page .management-compact-table thead th { position: sticky; top: 0; z-index: 1; font-size: 0.68rem; letter-spacing: 0.06em; }
+body.compact-management-page .user-table th:nth-child(1) { width: 42%; }
+body.compact-management-page .user-table th:nth-child(2) { width: 13%; }
+body.compact-management-page .user-table th:nth-child(3) { width: 13%; }
+body.compact-management-page .user-table th:nth-child(4) { width: 14%; }
+body.compact-management-page .user-table th:nth-child(5) { width: 18%; }
+body.compact-management-page .item-table th:nth-child(1) { width: 33%; }
+body.compact-management-page .item-table th:nth-child(2) { width: 20%; }
+body.compact-management-page .item-table th:nth-child(3) { width: 10%; }
+body.compact-management-page .item-table th:nth-child(4) { width: 12%; }
+body.compact-management-page .item-table th:nth-child(5) { width: 13%; }
+body.compact-management-page .item-table th:nth-child(6) { width: 12%; }
+body.compact-management-page .management-identity-cell { display: flex; align-items: center; gap: 11px; min-width: 0; }
+body.compact-management-page .management-identity-cell > :last-child { min-width: 0; }
+body.compact-management-page .management-identity-cell :is(.user-avatar, .item-image-preview) { flex: 0 0 42px; width: 42px; height: 42px; margin: 0; border-radius: 8px; }
+body.compact-management-page .management-identity-cell .item-image-preview img { width: 100%; height: 100%; object-fit: cover; }
+body.compact-management-page .management-item-name { display: grid; gap: 4px; }
+body.compact-management-page .management-item-name small { color: #877064; font-size: 0.74rem; }
+body.compact-management-page .management-compact-table :is(.role-chip, .user-status, .item-category-chip) { white-space: normal; text-align: center; max-width: 100%; }
+body.compact-management-page .management-compact-table :is(.user-actions, .item-actions) { flex-wrap: wrap; gap: 6px; }
+body.compact-management-page .management-compact-table :is(.item-price, td:nth-child(3)) { text-transform: none; }
+body.compact-management-page .management-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 18px; color: #715b51; font-size: 0.8rem; }
+body.compact-management-page .management-pagination > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+body.compact-management-page [data-compact-range]:focus-visible { outline: 2px solid #c9974b; outline-offset: 4px; }
+body.compact-management-page :is([data-compact-row], [data-compact-empty], [data-compact-pagination])[hidden] { display: none !important; }
+body.compact-management-page .management-details-dialog { position: fixed; inset: 0; width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); margin: auto; padding: 22px; overflow: auto; border: 1px solid #ddcdc3; border-radius: 12px; background: #fffdf9; color: #432821; box-shadow: 0 24px 70px rgba(39, 22, 14, 0.3); }
+body.compact-management-page .management-details-dialog:not([open]) { display: none; }
+body.compact-management-page .management-details-dialog::backdrop { background: rgba(39, 22, 14, 0.52); }
+body.compact-management-page .management-details-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+body.compact-management-page .management-details-dialog h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: 1.25rem; }
+body.compact-management-page .management-dialog-close { flex: 0 0 auto; }
+body.compact-management-page .management-details-dialog dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }
+body.compact-management-page .management-details-dialog dt { color: #877064; font-size: 0.74rem; font-weight: 700; }
+body.compact-management-page .management-details-dialog dd { margin: 5px 0 0; font-size: 0.88rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+body.compact-management-page .management-detail-wide { grid-column: 1 / -1; }
+
+/* Dashboard summaries stay visible above its existing section tabs. */
+body.kape-pages-dashboard.compact-management-page :is(.dashboard-grid, .dashboard-tab-panel, .dashboard-tabs) { min-width: 0; }
+body.kape-pages-dashboard.compact-management-page :is(.dashboard-kpis, .ai-analytics-grid) { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+body.kape-pages-dashboard.compact-management-page :is(.dashboard-kpi, .ai-analytics-card) { min-height: 0; padding: 15px; gap: 6px 10px; border-radius: 9px; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-content: start; }
+body.kape-pages-dashboard.compact-management-page .dashboard-kpi :is(.kpi-label, strong, small), body.kape-pages-dashboard.compact-management-page .ai-analytics-card :is(.ai-card-label, strong, small) { grid-column: 2; }
+body.kape-pages-dashboard.compact-management-page :is(.kpi-icon, .ai-card-icon) { width: 32px; height: 32px; font-size: 0.95rem; grid-row: 1 / span 3; }
+body.kape-pages-dashboard.compact-management-page :is(.dashboard-kpi strong, .ai-analytics-card strong) { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: clamp(1.15rem, 1.6vw, 1.6rem); line-height: 1.15; }
+body.kape-pages-dashboard.compact-management-page :is(.dashboard-kpi small, .ai-analytics-card small) { font-size: 0.75rem; line-height: 1.4; }
+body.kape-pages-dashboard.compact-management-page :is(.kpi-label, .ai-card-label) { font-size: 0.66rem; letter-spacing: 0.04em; line-height: 1.4; }
+body.kape-pages-dashboard.compact-management-page .dashboard-tab-list { padding: 5px; gap: 6px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-tab { min-height: 40px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-grid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-story { grid-column: 1 / -1; min-height: 0; padding: 16px 20px; flex-direction: row; align-items: center; gap: 20px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-story > div { min-width: 0; }
+body.kape-pages-dashboard.compact-management-page .dashboard-story h2 { margin: 4px 0 0; font: 800 1.1rem/1.2 Inter, "Segoe UI", Arial, sans-serif; max-width: none; }
+body.kape-pages-dashboard.compact-management-page .dashboard-story p { margin: 7px 0 0; max-width: none; font-size: 0.83rem; line-height: 1.5; }
+body.kape-pages-dashboard.compact-management-page :is(.chart-panel, .list-panel) { min-height: 0; padding: 15px 18px; }
+body.kape-pages-dashboard.compact-management-page .panel-header { margin-bottom: 12px; gap: 12px; }
+body.kape-pages-dashboard.compact-management-page .panel-header h2 { font-size: 1rem; }
+body.kape-pages-dashboard.compact-management-page .panel-eyebrow { font-size: 0.65rem; letter-spacing: 0.08em; }
+body.kape-pages-dashboard.compact-management-page .dashboard-chart-frame { position: relative; min-width: 0; width: 100%; height: 215px; }
+body.kape-pages-dashboard .ai-sales-chart-panel { margin: 14px 0; }
+body.kape-pages-dashboard #dashboard-panel-inventory .manager-table-wrap { overflow-x: auto; }
+body.kape-pages-dashboard #dashboard-panel-inventory table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+body.kape-pages-dashboard #dashboard-panel-inventory th { background: #452a21; color: #fff; text-align: left; }
+body.kape-pages-dashboard #dashboard-panel-inventory :is(th, td) { padding: 12px; border-bottom: 1px solid #e9dfd8; white-space: nowrap; }
+body.kape-pages-dashboard #dashboard-panel-inventory tbody tr:nth-child(even) { background: #fcfaf8; }
+body.kape-pages-dashboard .ai-sales-chart-panel .panel-header { flex-wrap: wrap; gap: 12px; }
+body.kape-pages-dashboard .ai-sales-chart-panel select { padding: 8px 12px; border: 1px solid #d8c8bd; border-radius: 8px; background: #fcfaf8; color: #4a342c; font: inherit; }
+body.kape-pages-dashboard .ai-sales-chart-panel p { color: #745b50; font-size: .82rem; line-height: 1.6; }
+body.kape-pages-dashboard .ai-sales-chart-panel .dashboard-chart-frame { height: 300px; }
+body.kape-pages-dashboard .ai-sales-method { margin-top: 12px; font-size: .82rem; }
+body.kape-pages-dashboard .ai-sales-method summary { color: #6d3b2b; font-weight: 700; cursor: pointer; padding: 6px 0; }
+body.kape-pages-dashboard.compact-management-page .dashboard-chart-frame canvas { width: 100% !important; height: 100% !important; max-height: none; }
+body.kape-pages-dashboard.compact-management-page .dashboard-list-row { padding: 9px 0; gap: 12px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-list-row strong { font-size: 0.82rem; }
+body.kape-pages-dashboard.compact-management-page .dashboard-list-row span { font-size: 0.74rem; }
+body.kape-pages-dashboard.compact-management-page .dashboard-list-row .row-end { flex: 0 0 auto; max-width: 45%; }
+body.kape-pages-dashboard.compact-management-page .dashboard-panel-links { display: flex; align-items: center; flex-wrap: wrap; justify-content: end; gap: 8px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-insight { padding: 18px 20px; gap: 18px; margin-bottom: 14px; }
+body.kape-pages-dashboard.compact-management-page .insight-label { font-size: 1.05rem; }
+body.kape-pages-dashboard.compact-management-page .dashboard-insight p { font-size: 0.88rem; line-height: 1.5; }
+
+@media (max-width: 1200px) {
+  body.compact-management-page .management-list-filters { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
+  body.compact-management-page .management-search-field { grid-column: 1 / -1; }
+  body.kape-pages-dashboard.compact-management-page :is(.dashboard-kpis, .ai-analytics-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  body.compact-management-page:not(.cashier-pos-shell) main.content > :is(.dashboard-heading, .user-page-heading, .item-page-heading, .category-page-heading, .reports-hero) { padding: 18px; flex-direction: column; align-items: stretch; gap: 14px; }
+  body.compact-management-page .management-list-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+  body.compact-management-page .management-search-field { grid-column: 1 / -1; }
+  body.compact-management-page .management-table-frame { padding: 10px 12px; max-height: none; overflow: visible; scrollbar-gutter: auto; }
+  body.compact-management-page .management-table-frame .management-compact-table { display: block; }
+  body.compact-management-page .management-compact-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  body.compact-management-page .management-compact-table tbody { display: grid; gap: 10px; }
+  body.compact-management-page .management-compact-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid #eadfd6; border-radius: 8px; padding: 6px; }
+  body.compact-management-page .management-table-frame .management-compact-table tbody td { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; border: 0; padding: 6px; background: transparent; font-size: 0.82rem; }
+  body.compact-management-page .management-compact-table td[data-label]::before { content: attr(data-label); color: #877064; font-size: 0.7rem; font-weight: 700; }
+  body.compact-management-page .management-compact-table td:first-child { grid-column: 1 / -1; }
+  body.compact-management-page .management-compact-table td:first-child::before { content: none; }
+  body.compact-management-page .item-table td:nth-child(2) { grid-column: 1 / -1; }
+  body.compact-management-page .management-compact-table [data-compact-empty] td { grid-column: 1 / -1; }
+  body.compact-management-page .management-pagination { padding: 12px; }
+  body.compact-management-page .management-details-dialog dl { grid-template-columns: minmax(0, 1fr); }
+  body.kape-pages-dashboard.compact-management-page .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  body.kape-pages-dashboard.compact-management-page .dashboard-story { flex-direction: column; align-items: stretch; gap: 12px; }
+  body.kape-pages-dashboard.compact-management-page .dashboard-chart-frame { height: 200px; }
+}
+@media (max-width: 480px) {
+  body.kape-pages-dashboard.compact-management-page :is(.dashboard-kpi, .ai-analytics-card) { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  body.kape-pages-dashboard.compact-management-page :is(.kpi-icon, .ai-card-icon) { grid-row: auto; }
+  body.kape-pages-dashboard.compact-management-page .dashboard-kpi :is(.kpi-label, strong, small), body.kape-pages-dashboard.compact-management-page .ai-analytics-card :is(.ai-card-label, strong, small) { grid-column: 1; }
+  body.compact-management-page .management-details-dialog { padding: 18px; }
+}
+
+body.compact-management-page :is(.user-summary-pills, .item-summary-pills, .category-summary-pills) { min-width: 0; max-width: 100%; gap: 8px; }
+body.compact-management-page .user-summary-pills > span { min-height: 34px; padding: 7px 11px; gap: 6px; font-size: 0.78rem; }
+body.compact-management-page .user-summary-pills > .user-role-summary { flex-wrap: wrap; gap: 6px; min-height: 34px; padding: 7px 9px; white-space: normal; }
+body.compact-management-page .user-role-summary-item { min-height: 26px; padding: 3px 6px; gap: 4px; font-size: 0.72rem; }
+body.compact-management-page:not(.cashier-pos-shell) main.content > .item-page-heading .item-summary-pills > span { min-height: 34px; padding: 7px 11px; font-size: 0.78rem; }
+body.kape-pages-dashboard.compact-management-page .dashboard-grid.dashboard-inventory-grid { grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 14px; margin-bottom: 14px; }
+body.kape-pages-dashboard.compact-management-page .dashboard-inventory-grid > .ai-analytics-card { height: auto; }
+@media (max-width: 1100px) {
+  body.kape-pages-dashboard.compact-management-page .dashboard-grid.dashboard-inventory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  body.kape-pages-dashboard.compact-management-page .dashboard-grid.dashboard-inventory-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Manage Category and Customer History share compact frames and labeled mobile rows. */
+body.compact-management-page .category-list-filters { grid-template-columns: minmax(220px, 2fr) minmax(180px, 1fr) auto; }
+body.compact-management-page .category-table th:first-child { width: 58%; }
+body.compact-management-page .category-table th:nth-child(2) { width: 24%; }
+body.compact-management-page .category-table th:nth-child(3) { width: 18%; }
+body.compact-management-page .management-identity-cell .category-image-preview { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 8px; }
+body.compact-management-page .category-actions { flex-wrap: wrap; gap: 6px; }
+body.compact-management-page a.category-count-chip { white-space: normal; text-decoration: none; text-align: center; min-height: 32px; padding: 6px 10px; }
+body.compact-management-page a.category-count-chip:focus-visible { outline: 3px solid #c9974b; outline-offset: 2px; }
+body.compact-management-page .category-summary-pills > span { min-height: 34px; padding: 7px 11px; font-size: 0.78rem; }
+body.customer-history-page.compact-management-page .reports-page { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+body.customer-history-page.compact-management-page .reports-hero > div { min-width: 0; }
+body.customer-history-page.compact-management-page .customer-history-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 18px; margin: 0; }
+body.customer-history-page.compact-management-page .customer-history-filters { grid-template-columns: minmax(180px, 1fr) auto auto; padding: 0; border: 0; }
+body.customer-history-page.compact-management-page .customer-history-filters .reports-action { min-height: 42px; padding: 9px 14px; }
+body.customer-history-page.compact-management-page #customerHistoryUpdated { color: #877064; font-size: 0.74rem; }
+body.customer-history-page.compact-management-page .customer-history-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; margin: 0; overflow: visible; }
+body.customer-history-page.compact-management-page .customer-history-tab { white-space: normal; min-width: 0; min-height: 40px; padding: 8px 10px; font-size: 0.76rem; }
+body.customer-history-page.compact-management-page :is(.customer-history-panels, .customer-history-panel) { min-width: 0; }
+body.customer-history-page.compact-management-page .reports-panel-heading { padding: 14px 18px; gap: 12px; flex-wrap: wrap; }
+body.customer-history-page.compact-management-page .reports-panel-heading h2 { font-size: 1.2rem; }
+body.customer-history-page.compact-management-page .reports-panel-heading small { font-size: 0.76rem; }
+body.customer-history-page.compact-management-page .customer-history-order-total { display: block; margin-top: 5px; color: #877064; }
+body.customer-history-page.compact-management-page .management-compact-table td:first-child { display: table-cell; }
+body.customer-history-page.compact-management-page .management-compact-table th:first-child { width: 28%; }
+body.customer-history-page.compact-management-page .customer-records-table th:nth-child(2) { width: 9%; }
+body.customer-history-page.compact-management-page .customer-records-table th:nth-child(3) { width: 17%; }
+body.customer-history-page.compact-management-page .customer-records-table th:nth-child(4) { width: 18%; }
+body.customer-history-page.compact-management-page .customer-records-table th:nth-child(5) { width: 15%; }
+body.customer-history-page.compact-management-page .customer-records-table th:nth-child(6) { width: 13%; }
+body.customer-history-page.compact-management-page .customer-orders-table th:nth-child(2) { width: 22%; }
+body.customer-history-page.compact-management-page .customer-orders-table th:nth-child(3) { width: 11%; }
+body.customer-history-page.compact-management-page .customer-orders-table th:nth-child(4) { width: 12%; }
+body.customer-history-page.compact-management-page .customer-orders-table th:nth-child(5) { width: 14%; }
+body.customer-history-page.compact-management-page .customer-orders-table th:nth-child(6) { width: 13%; }
+body.customer-history-page.compact-management-page .customer-history-link { display: inline-flex; min-height: 32px; align-items: center; color: #68412e; font-size: 0.78rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+body.customer-history-page.compact-management-page .customer-history-status { display: inline-block; border-radius: 6px; background: #f5eee8; padding: 5px 7px; font-size: 0.76rem; }
+body.customer-history-page.compact-management-page .customer-history-date-note { display: block; margin-top: 4px; color: #877064; font-size: 0.72rem; }
+@media (max-width: 1100px) {
+  body.customer-history-page.compact-management-page .customer-history-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  body.compact-management-page .category-list-filters { grid-template-columns: minmax(0, 1fr) auto; }
+  body.customer-history-page.compact-management-page .customer-history-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  body.customer-history-page.compact-management-page .customer-history-filters .management-search-field { grid-column: 1 / -1; }
+  body.customer-history-page.compact-management-page .customer-history-tab { font-size: 0.72rem; padding: 8px 6px; gap: 5px; }
+  body.customer-history-page.compact-management-page .reports-panel-heading { align-items: flex-start; padding: 12px; }
+  body.customer-history-page.compact-management-page .management-compact-table td:first-child { display: flex; }
+  body.customer-history-page.compact-management-page .reports-hero .reports-action { align-self: flex-start; }
+}
+
+/* Keep recent stock secondary to the forecasting workspace. */
+body.kape-pages-dashboard.compact-management-page .inventory-latest-summary > summary { cursor: pointer; margin-bottom: 0; display: flex; align-items: center; justify-content: space-between; }
+body.kape-pages-dashboard.compact-management-page .inventory-latest-summary > summary small { display: block; margin-top: 6px; color: #877064; font-size: .75rem; }
+body.kape-pages-dashboard.compact-management-page .inventory-latest-summary[open] > summary { margin-bottom: 12px; }
+body.kape-pages-dashboard.compact-management-page .inventory-summary-toggle { font-size: .75rem; color: #745b50; }
+body.kape-pages-dashboard.compact-management-page .inventory-summary-link { display: inline-block; margin-top: 12px; font-size: .8rem; font-weight: 700; }
+body.kape-pages-dashboard .ai-generation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+body.kape-pages-dashboard .ai-generation-controls button { font: inherit; cursor: pointer; }
+body.kape-pages-dashboard .ai-generation-controls button:disabled { opacity: .6; cursor: wait; }
+body.kape-pages-dashboard .ai-generation-controls small { font-size: .75rem; }
+body.kape-pages-dashboard #aiDataUsed pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border-radius: 8px; background: #fffaf3; color: #452a21; font-size: .78rem; }
+body.kape-pages-dashboard #aiDataUsed summary { cursor: pointer; }
+/* Give the AI recommendation, controls and analytics a consistent reading rhythm. */
+body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai > * + * { margin-top: 16px; }
+body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-analytics-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px;
+  padding: 24px;
+  margin-bottom: 0;
+}
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .insight-copy { gap: 12px; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .insight-actions { align-items: stretch; flex-direction: column; gap: 10px; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .insight-action { min-height: 42px; padding: 10px 16px; line-height: 1.4; text-align: center; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .ai-generation-controls { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 4px 0 0; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .ai-generation-controls small { max-width: 62ch; line-height: 1.6; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel :is(#aiGenerationStatus, #aiGeneratedAt) { margin: 0; font-size: .78rem; line-height: 1.6; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel #aiGeneratedAt:empty { display: none; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel #aiDataUsed { padding: 12px 0; border-top: 1px solid rgba(134, 96, 22, .18); }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel #aiDataUsed summary { padding: 4px 0; line-height: 1.5; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel #aiDataUsed pre { margin: 12px 0; }
+body.kape-pages-dashboard.compact-management-page .ai-analytics-panel #aiDataUsed small { display: block; line-height: 1.6; }
+body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-sales-chart-panel { padding: 20px 24px; margin-bottom: 0; }
+body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-sales-chart-panel p { margin: 8px 0; }
+body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-sales-chart-panel p:empty { display: none; }
+body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-sales-chart-panel .dashboard-chart-frame { margin-top: 16px; }
+@media (max-width: 900px) {
+  body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-analytics-panel { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 18px; }
+  body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .insight-actions { flex-direction: row; flex-wrap: wrap; }
+  body.kape-pages-dashboard.compact-management-page #dashboard-panel-ai .ai-sales-chart-panel { padding: 18px; }
+}
+@media (max-width: 480px) {
+  body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .ai-generation-controls button { width: 100%; }
+  body.kape-pages-dashboard.compact-management-page .ai-analytics-panel .insight-actions > a { flex: 1 1 100%; }
+}
+body.kape-pages-dashboard .ai-data-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+body.kape-pages-dashboard .ai-data-summary > div { min-width: 0; padding: 12px 14px; background: #fffaf3; border: 1px solid #eadfcd; border-radius: 8px; }
+body.kape-pages-dashboard .ai-data-summary dt { color: #796553; font-size: .75rem; line-height: 1.5; }
+body.kape-pages-dashboard .ai-data-summary dd { margin: 5px 0 0; color: #452a21; font-size: 1rem; font-weight: 700; }
+@media(max-width: 600px) { body.kape-pages-dashboard .ai-data-summary { grid-template-columns: minmax(0, 1fr); } }

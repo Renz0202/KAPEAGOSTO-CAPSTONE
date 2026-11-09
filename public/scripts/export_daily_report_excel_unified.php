@@ -43,7 +43,7 @@ $inv_stmt = $pdo->prepare("
                         'consume','consumed','consumption',
                         'deduct','deduction',
                         'auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage',
-                        'damage'
+                        'damage','spoilage'
                     )
                     OR LOWER(remarks) LIKE '%auto-deduct%'
                     OR LOWER(remarks) LIKE '%auto deduct%'
@@ -82,7 +82,7 @@ $inv_stmt = $pdo->prepare("
                         'consume','consumed','consumption',
                         'deduct','deduction',
                         'auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage',
-                        'damage'
+                        'damage','spoilage'
                     )
                  OR LOWER(remarks) LIKE '%auto-deduct%'
                  OR LOWER(remarks) LIKE '%auto deduct%'
@@ -103,7 +103,7 @@ $inv_stmt = $pdo->prepare("
                             'consume','consumed','consumption',
                             'deduct','deduction',
                             'auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage',
-                            'damage'
+                            'damage','spoilage'
                         )
                         OR LOWER(remarks) LIKE '%auto-deduct%'
                         OR LOWER(remarks) LIKE '%auto deduct%'
@@ -122,7 +122,7 @@ $inv_stmt = $pdo->prepare("
                   AND DATE(created_at) >= ?
             ), 0))
             + COALESCE((SELECT SUM(quantity) FROM inventory_logs WHERE inventory_id = inv.id AND DATE(created_at) = ? AND (LOWER(change_type) IN ('added','restock') OR (LOWER(change_type)='adjustment' AND quantity>0))), 0)
-            - COALESCE((SELECT SUM(quantity) FROM inventory_logs WHERE inventory_id = inv.id AND DATE(created_at) = ? AND (LOWER(change_type) IN ('used','use','usage','consume','consumed','consumption','deduct','deduction','auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage','damage') OR LOWER(remarks) LIKE '%auto-deduct%' OR LOWER(remarks) LIKE '%auto deduct%' OR LOWER(remarks) LIKE '%auto_deduct%' OR LOWER(remarks) LIKE '%auto-use%' OR LOWER(remarks) LIKE '%auto use%' OR LOWER(remarks) LIKE '%auto_usage%' OR (LOWER(change_type)='adjustment' AND quantity<0))), 0)
+            - COALESCE((SELECT SUM(quantity) FROM inventory_logs WHERE inventory_id = inv.id AND DATE(created_at) = ? AND (LOWER(change_type) IN ('used','use','usage','consume','consumed','consumption','deduct','deduction','auto-deduct','auto deduct','auto_deduct','auto-use','auto use','auto_usage','auto usage','damage','spoilage') OR LOWER(remarks) LIKE '%auto-deduct%' OR LOWER(remarks) LIKE '%auto deduct%' OR LOWER(remarks) LIKE '%auto_deduct%' OR LOWER(remarks) LIKE '%auto-use%' OR LOWER(remarks) LIKE '%auto use%' OR LOWER(remarks) LIKE '%auto_usage%' OR (LOWER(change_type)='adjustment' AND quantity<0))), 0)
         ) AS remaining
     FROM inventory inv
     ORDER BY inv.name, inv.cup_size

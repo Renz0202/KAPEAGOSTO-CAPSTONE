@@ -29,8 +29,26 @@ $total = (float) $order['total'];
 $paid = payment_total_paid($pdo, $orderId);
 $remaining = max(0, $total - $paid);
 $payments = payment_list_for_order($pdo, $orderId);
+$cashSummary = payment_receipt_summary($pdo, payment_related_order_ids($pdo, $orderId));
 $isPending = ($order['status'] ?? '') === 'pending';
-$userRole = strtolower((string) ($_SESSION['user']['role'] ?? ''));
+$canAcceptPayment = $isPending && $remaining > 0;
+$userRole = current_user_role();
+
+function payment_provider_label(string $provider): string {
+    return [
+        'manual' => 'Cash',
+        'stripe' => 'Card',
+        'change_credit' => 'Change Credit',
+    ][$provider] ?? ucfirst($provider);
+}
+
+function payment_credit_source_order_id(array $payment): int {
+    if (($payment['provider'] ?? '') !== 'change_credit' || empty($payment['raw_response'])) {
+        return 0;
+    }
+    $details = json_decode((string) $payment['raw_response'], true);
+    return is_array($details) ? (int) ($details['source_order_id'] ?? 0) : 0;
+}
 
 $itemsStmt = $pdo->prepare('
     SELECT oi.id AS order_item_id, i.name, i.cup_size, oi.qty, oi.price,
@@ -68,6 +86,9 @@ function payment_status_label(string $status): string {
     <div>
       <p class="payment-breadcrumb"><?= htmlspecialchars(role_display_name(current_user_role())) ?> <i class="fa fa-chevron-right"></i> Manage Order</p>
       <h1 id="payment-title">Payment</h1>
+      <p class="payment-copy">Order Type: <strong><?= htmlspecialchars(order_service_type_label($order['service_type'] ?? null)) ?></strong></p>
+      <p class="payment-copy">Transaction Number: <strong><?= htmlspecialchars(order_transaction_number($orderId)) ?></strong></p>
+      <p class="payment-copy">Sales Invoice: <strong id="salesInvoiceNumber"><?= htmlspecialchars($order['sales_invoice_no'] ?: 'Issued after full payment') ?></strong></p>
       <p class="payment-copy">Settle payment for <?= htmlspecialchars($orderLabel) ?> and print the customer copy.</p>
     </div>
     <div class="payment-order-badge">
@@ -91,47 +112,49 @@ function payment_status_label(string $status): string {
           <span>Amount Remaining</span>
           <strong id="remainValue" class="<?= $remaining > 0 ? 'is-due' : 'is-paid' ?>"><?= htmlspecialchars(payment_money($remaining)) ?></strong>
         </div>
+        <div>
+          <span>Change Due</span>
+          <strong id="changeDueValue"><?= $cashSummary['cash_complete'] ? htmlspecialchars(payment_money($cashSummary['change'])) : 'Not recorded' ?></strong>
+        </div>
       </div>
-
+      <label for="payInput" class="payment-cash-label">Cash Received from Customer</label>
       <div class="payment-entry">
-        <label for="payInput" class="sr-only">Payment Amount</label>
         <div class="payment-input-wrap">
           <span>PHP</span>
-          <input id="payInput" class="pay-input" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          <input id="payInput" class="pay-input" type="text" inputmode="decimal" placeholder="Enter cash received" autocomplete="off" aria-describedby="cashEntryHelp">
         </div>
-        <button type="button" class="payment-cash-btn" data-method="cash" <?= $isPending ? '' : 'disabled' ?>>
+        <button type="button" class="payment-cash-btn" data-method="cash" <?= $canAcceptPayment ? '' : 'disabled' ?>>
           <i class="fa fa-money-bill-wave"></i>
-          Cash
+          Enter
         </button>
       </div>
+
 
       <div class="payment-keypad" aria-label="Payment keypad">
         <button type="button" data-k="7">7</button>
         <button type="button" data-k="8">8</button>
         <button type="button" data-k="9">9</button>
-        <button type="button" data-action="exact">Exact</button>
-        <button type="button" data-action="back"><i class="fa fa-delete-left"></i></button>
         <button type="button" data-k="4">4</button>
         <button type="button" data-k="5">5</button>
         <button type="button" data-k="6">6</button>
-        <button type="button" data-action="clear">Clear</button>
-        <button type="button" data-action="plus" data-value="100">M+</button>
         <button type="button" data-k="1">1</button>
         <button type="button" data-k="2">2</button>
         <button type="button" data-k="3">3</button>
-        <button type="button" class="key-tall" data-action="plus" data-value="50">+</button>
-        <button type="button" class="key-tall" data-action="submit">Entry</button>
-        <button type="button" data-k=",">,</button>
-        <button type="button" data-k="0">0</button>
+        <button type="button" class="key-wide" data-k="0">0</button>
         <button type="button" data-k=".">.</button>
-        <button type="button" data-quick="20">PHP 20</button>
-        <button type="button" data-quick="50">PHP 50</button>
-        <button type="button" data-quick="100">PHP 100</button>
-        <button type="button" data-quick="500">PHP 500</button>
-        <button type="button" data-quick="1000">PHP 1000</button>
+        <button type="button" data-action="exact">Exact</button>
+        <button type="button" data-action="clear">Clear</button>
+        <button type="button" data-action="back" aria-label="Backspace"><i class="fa fa-delete-left" aria-hidden="true"></i></button>
+        <div class="payment-quick-amounts" role="group" aria-label="Add cash amount">
+          <button type="button" data-quick="20"><span>PHP</span>20</button>
+          <button type="button" data-quick="50"><span>PHP</span>50</button>
+          <button type="button" data-quick="100"><span>PHP</span>100</button>
+          <button type="button" data-quick="500"><span>PHP</span>500</button>
+          <button type="button" data-quick="1000"><span>PHP</span>1000</button>
+        </div>
       </div>
-
-      <div class="payment-notice">Only cash payments are enabled at this time.</div>
+      <div class="payment-notice" id="cashEntryHelp">Enter the full cash handed to the cashier, then select Enter. The payment and change will be saved on the receipt.</div>
+      <div class="payment-recorded-cash" aria-live="polite">Recorded Cash Received: <strong id="recordedCashValue"><?= $cashSummary['cash_complete'] ? htmlspecialchars(payment_money($cashSummary['cash_received'])) : 'Not fully recorded' ?></strong></div>
       <div class="payment-feedback" id="paymentClientNotice" role="status" aria-live="polite" hidden></div>
     </section>
 
@@ -172,6 +195,16 @@ function payment_status_label(string $status): string {
             </tbody>
           </table>
         </div>
+        <?php if (($order['discount_type'] ?? 'none') !== 'none'): ?>
+          <div class="payment-table-total"><span>Subtotal before discount</span><strong><?= htmlspecialchars(payment_money($order['subtotal'] ?? 0)) ?></strong></div>
+          <?php if ((float) ($order['vat_exempt_amount'] ?? 0) > 0): ?>
+            <div class="payment-table-total"><span>VAT Exemption</span><strong>-<?= htmlspecialchars(payment_money($order['vat_exempt_amount'])) ?></strong></div>
+          <?php endif; ?>
+          <div class="payment-table-total">
+            <span><?= in_array($order['discount_type'], ['senior', 'pwd'], true) ? 'Senior/PWD Discount (20%)' : 'Promo Discount (' . number_format((float) $order['discount_rate'], 2) . '%)' ?></span>
+            <strong>-<?= htmlspecialchars(payment_money($order['discount_amount'])) ?></strong>
+          </div>
+        <?php endif; ?>
         <div class="payment-table-total">
           <span>Total</span>
           <strong><?= htmlspecialchars(payment_money($total)) ?></strong>
@@ -202,8 +235,20 @@ function payment_status_label(string $status): string {
                   $hasSucceededPayment = true;
               ?>
                 <tr data-id="<?= (int) $payment['id'] ?>">
-                  <td><?= htmlspecialchars(ucfirst($payment['provider'])) ?></td>
-                  <td><?= htmlspecialchars(payment_money($payment['amount'])) ?></td>
+                  <td><?= htmlspecialchars(payment_provider_label((string) $payment['provider'])) ?></td>
+                  <td>
+                    <?= htmlspecialchars(payment_money($payment['amount'])) ?>
+                    <?php $cashDetails = payment_cash_details($payment); ?>
+                    <?php if ($cashDetails): ?>
+                      <small class="payment-cash-detail">Cash received <?= htmlspecialchars(payment_money($cashDetails['tendered'])) ?> | Change due <?= htmlspecialchars(payment_money($cashDetails['change'])) ?></small>
+                    <?php elseif (($payment['provider'] ?? '') === 'manual'): ?>
+                      <small class="payment-cash-detail">Cash received was not recorded.</small>
+                    <?php endif; ?>
+                    <?php $creditSourceOrderId = payment_credit_source_order_id($payment); ?>
+                    <?php if ($creditSourceOrderId > 0): ?>
+                      <small class="payment-cash-detail">Applied from Order #<?= $creditSourceOrderId ?></small>
+                    <?php endif; ?>
+                  </td>
                   <td><?= htmlspecialchars(date('m/d/Y h:i A', strtotime($payment['created_at']))) ?></td>
                   <td>
                     <?php if ($payment['provider'] === 'manual' && $isPending): ?>
@@ -272,21 +317,36 @@ function payment_status_label(string $status): string {
   const orderId = <?= (int) $orderId ?>;
   const userRole = "<?= htmlspecialchars($userRole, ENT_QUOTES) ?>";
   const pendingOrder = <?= $isPending ? 'true' : 'false' ?>;
+  let canAcceptPayment = <?= $canAcceptPayment ? 'true' : 'false' ?>;
   let remainingAmount = <?= json_encode((float) $remaining) ?>;
   const payInput = document.getElementById('payInput');
+  const cashButton = document.querySelector('[data-method="cash"]');
   const paidValue = document.getElementById('paidValue');
   const remainValue = document.getElementById('remainValue');
   const paymentsTbody = document.getElementById('paymentsTbody');
   const submitOrderBtn = document.getElementById('submitOrderBtn');
   const paymentClientNotice = document.getElementById('paymentClientNotice');
+  const changeDueValue = document.getElementById('changeDueValue');
+  const recordedCashValue = document.getElementById('recordedCashValue');
+  let recordedCash = <?= json_encode((float) $cashSummary['cash_received']) ?>;
+  let recordedChange = <?= json_encode((float) $cashSummary['change']) ?>;
+  let cashComplete = <?= $cashSummary['cash_complete'] ? 'true' : 'false' ?>;
+  let submittingPayment = false;
 
   function money(value) {
     return 'PHP ' + Number(value || 0).toFixed(2);
   }
 
+  function enteredAmount() {
+    const rawAmount = payInput ? payInput.value.trim().replace(/,/g, '') : '';
+    if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(rawAmount)) return 0;
+    const amount = Number(rawAmount);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  }
+
   function showPaymentNotice(message, type) {
     if (typeof window.kapeNotify === 'function') {
-      window.kapeNotify(message, type === 'success' ? 'success' : 'error');
+      window.kapeNotify(message, type === 'success' ? 'success' : 'error', 'payment-notice');
       return;
     }
     if (!paymentClientNotice) return;
@@ -304,7 +364,15 @@ function payment_status_label(string $status): string {
     paymentClientNotice.classList.remove('is-error', 'is-success');
   }
 
+  function updateTenderSummary() {
+    const tendered = enteredAmount();
+    const change = tendered > 0 ? Math.max(0, Math.round((tendered - remainingAmount) * 100) / 100) : recordedChange;
+    changeDueValue.textContent = tendered > 0 || cashComplete ? money(change) : 'Not recorded';
+    changeDueValue.classList.toggle('is-change', change > 0);
+    if (recordedCashValue) recordedCashValue.textContent = cashComplete ? money(recordedCash) : 'Not fully recorded';
+  }
   function post(url, data) {
+    const finishLoading = window.KapeLoading?.start({ label: 'Saving payment...', delay: 350 });
     return fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -314,7 +382,7 @@ function payment_status_label(string $status): string {
         if (!response.ok) throw payload;
         return payload;
       });
-    });
+    }).finally(function () { finishLoading?.(); });
   }
 
   function setModal(id, open) {
@@ -337,9 +405,9 @@ function payment_status_label(string $status): string {
 
   function appendKey(key) {
     if (!payInput || !pendingOrder) return;
-    if (key === ',') return;
     if (key === '.' && payInput.value.includes('.')) return;
     payInput.value = (payInput.value || '') + key;
+    updateTenderSummary();
     payInput.focus();
   }
 
@@ -347,22 +415,22 @@ function payment_status_label(string $status): string {
     if (!payInput || !pendingOrder) return;
     const current = parseFloat(payInput.value || '0') || 0;
     payInput.value = (current + Number(value || 0)).toFixed(2);
+    updateTenderSummary();
     payInput.focus();
   }
 
   async function submitCashPayment() {
-    if (!pendingOrder) return;
-    const amount = parseFloat(payInput.value || '0');
+    if (!canAcceptPayment || submittingPayment) return;
+    const amount = enteredAmount();
     if (!amount || amount <= 0) {
       showPaymentNotice('Enter a valid payment amount.', 'error');
       return;
     }
 
     clearPaymentNotice();
+    submittingPayment = true;
 
-    document.querySelectorAll('[data-method], [data-action="submit"]').forEach(function(button) {
-      button.setAttribute('disabled', 'disabled');
-    });
+    if (cashButton) cashButton.disabled = true;
 
     try {
       const result = await post('payment_manual_add.php', { order_id: orderId, method: 'cash', amount });
@@ -371,18 +439,24 @@ function payment_status_label(string $status): string {
         return;
       }
       payInput.value = '';
+      recordedCash = Math.round((recordedCash + Number(result.tendered || amount)) * 100) / 100;
+      recordedChange = Math.round((recordedChange + Number(result.change || 0)) * 100) / 100;
+      remainingAmount = Number(result.remaining || 0);
+      canAcceptPayment = pendingOrder && remainingAmount > 0;
       await refreshPaymentData();
-      showPaymentNotice('Payment recorded successfully.', 'success');
+      const change = Number(result.change || 0);
+      updateTenderSummary();
+      showPaymentNotice(change > 0 ? 'Payment recorded. Change due: ' + money(change) : 'Payment recorded successfully.', 'success');
     } catch (error) {
       showPaymentNotice(error.message || 'Payment failed.', 'error');
     } finally {
-      document.querySelectorAll('[data-method], [data-action="submit"]').forEach(function(button) {
-        button.removeAttribute('disabled');
-      });
+      submittingPayment = false;
+      if (cashButton) cashButton.disabled = !canAcceptPayment;
     }
   }
 
   async function refreshPaymentData() {
+    const finishLoading = window.KapeLoading?.start({ label: 'Updating payment...' });
     try {
       const response = await fetch('order_payment_data.php?order_id=' + encodeURIComponent(orderId) + '&t=' + Date.now(), { cache: 'no-store' });
       if (!response.ok) return;
@@ -390,6 +464,19 @@ function payment_status_label(string $status): string {
       if (!data.ok) return;
 
       remainingAmount = Number(data.order.remaining || 0);
+      const invoiceNumber = document.getElementById('salesInvoiceNumber');
+      if (invoiceNumber) invoiceNumber.textContent = data.order.sales_invoice_no || 'Issued after full payment';
+      canAcceptPayment = data.order.status === 'pending' && remainingAmount > 0;
+      if (data.cash_summary) {
+        recordedCash = Number(data.cash_summary.cash_received || 0);
+        recordedChange = Number(data.cash_summary.change || 0);
+        cashComplete = data.cash_summary.cash_complete;
+      }
+      const totalValue = document.getElementById('totalValue');
+      if (totalValue) totalValue.textContent = money(data.order.total);
+
+      if (cashButton) cashButton.disabled = !canAcceptPayment || submittingPayment;
+      updateTenderSummary();
       if (paidValue) paidValue.textContent = money(data.order.paid);
       if (remainValue) {
         remainValue.textContent = money(data.order.remaining);
@@ -406,12 +493,33 @@ function payment_status_label(string $status): string {
           const row = document.createElement('tr');
           row.dataset.id = payment.id;
           const date = payment.created_at ? new Date(payment.created_at.replace(' ', 'T')).toLocaleString('en-PH', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
-          row.innerHTML = `
-            <td>${(payment.provider || '').charAt(0).toUpperCase() + (payment.provider || '').slice(1)}</td>
-            <td>${money(payment.amount)}</td>
-            <td>${date}</td>
-            <td>${payment.removable && pendingOrder ? '<button type="button" class="payment-mini-btn" data-remove="' + payment.id + '"><i class="fa fa-xmark"></i></button>' : ''}</td>
-          `;
+          const providerCell = document.createElement('td');
+          providerCell.textContent = payment.label || (payment.provider || '').charAt(0).toUpperCase() + (payment.provider || '').slice(1);
+          const amountCell = document.createElement('td');
+          amountCell.appendChild(document.createTextNode(money(payment.amount)));
+          if (payment.provider === 'manual') {
+            const detail = document.createElement('small');
+            detail.className = 'payment-cash-detail';
+            detail.textContent = payment.tendered === null ? 'Cash received was not recorded.' : 'Cash received ' + money(payment.tendered) + ' | Change due ' + money(payment.change);
+            amountCell.appendChild(detail);
+          } else if (payment.provider === 'change_credit' && Number(payment.source_order_id || 0) > 0) {
+            const detail = document.createElement('small');
+            detail.className = 'payment-cash-detail';
+            detail.textContent = 'Applied from Order #' + payment.source_order_id;
+            amountCell.appendChild(detail);
+          }
+          const dateCell = document.createElement('td');
+          dateCell.textContent = date;
+          const actionCell = document.createElement('td');
+          if (payment.removable && pendingOrder) {
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'payment-mini-btn';
+            removeButton.dataset.remove = payment.id;
+            removeButton.innerHTML = '<i class="fa fa-xmark"></i>';
+            actionCell.appendChild(removeButton);
+          }
+          row.append(providerCell, amountCell, dateCell, actionCell);
           paymentsTbody.appendChild(row);
         });
       }
@@ -425,6 +533,8 @@ function payment_status_label(string $status): string {
       }
     } catch (error) {
       return;
+    } finally {
+      finishLoading?.();
     }
   }
 
@@ -435,12 +545,24 @@ function payment_status_label(string $status): string {
       if (button.dataset.action === 'back' && payInput) payInput.value = payInput.value.slice(0, -1);
       if (button.dataset.action === 'clear' && payInput) payInput.value = '';
       if (button.dataset.action === 'exact' && payInput) payInput.value = remainingAmount.toFixed(2);
-      if (button.dataset.action === 'plus') addAmount(button.dataset.value);
-      if (button.dataset.action === 'submit') submitCashPayment();
+      if (button.dataset.action === 'back' || button.dataset.action === 'clear' || button.dataset.action === 'exact') {
+        updateTenderSummary();
+      }
     });
   });
 
-  document.querySelector('[data-method="cash"]')?.addEventListener('click', submitCashPayment);
+  cashButton?.addEventListener('click', submitCashPayment);
+
+  payInput?.addEventListener('input', function() {
+    updateTenderSummary();
+  });
+  payInput?.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitCashPayment();
+    }
+  });
+  updateTenderSummary();
 
   paymentsTbody?.addEventListener('click', async function(event) {
     const button = event.target.closest('[data-remove]');
@@ -474,7 +596,7 @@ function payment_status_label(string $status): string {
   });
 
   document.getElementById('voidOrderBtn')?.addEventListener('click', function() {
-    if (userRole === 'admin' || userRole === 'business_admin') {
+    if (userRole === 'admin') {
       confirmVoidOrder();
     } else {
       setModal('adminPermissionModal', true);

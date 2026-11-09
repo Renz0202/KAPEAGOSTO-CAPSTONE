@@ -1,0 +1,13 @@
+{
+    "created_at": "2026-10-09T18:01:54+08:00",
+    "reason": "Before user-authorized generated starter recipes",
+    "requirements": [
+        {
+            "id": 2,
+            "item_id": 37,
+            "inventory_id": 26,
+            "quantity_needed": "3.00"
+        }
+    ],
+    "metadata": []
+}
