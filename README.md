@@ -6,13 +6,10 @@ Kape Agosto is a web-based point-of-sale and operations system for the shop’s 
 
 ## Group Members & Roles
 
-> Replace the placeholders with the group’s official names and assigned roles before final submission.
-
-- **[Group Leader Name]** – Project Manager / Lead Developer
-- **[Member 2 Name]** – Frontend / UI-UX Developer
-- **[Member 3 Name]** – Backend / Database Administrator
-
-Add or remove rows to match the group.
+- **Castro** – Project Manager / Lead Developer
+- **Castro, Biteranta** – Frontend / UI-UX Developer
+- **Castro** – Backend / Database Administrator
+- **Bayawa, Cariño, Permaran** – Documentation
 
 ---
 
